@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!--
+      .NET リリースポリシー:
+        偶数 = LTS (3年サポート) / 奇数 = STS (2年サポート)
+        .NET 10 LTS: 2025年11月 〜 2028年11月  ← 現在の推奨
+        .NET 12 LTS: 2027年11月 〜 2030年11月  ← 次のLTS
+      この1行を net10.0-windows → net12.0-windows に変えるだけで移行できる。
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>QTBarExtension</AssemblyName>
+    <RootNamespace>QTBarExtension</RootNamespace>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64</Platforms>
+    <!-- エントリポイントを明示（App.xaml の App クラスと Program.cs の競合解消） -->
+    <StartupObject>QTBarExtension.Program</StartupObject>
+    <!-- DPI設定はマニフェストではなくここで指定（警告 WFO0003 対応） -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0 (.NET 10 LTS)</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- zip以外の圧縮フォルダ (rar, 7z, tar, gz 等) のプレビュー対応のため追加 -->
+    <!-- NU1902: GHSA-6c8g-7p36-r338 は WriteToDirectory (展開API) 使用時のみ影響。
+         本プロジェクトはストリーム読み込みのみのため実害なし。警告を抑制。 -->
+    <PackageReference Include="SharpCompress" Version="0.48.0">
+      <NoWarn>NU1902</NoWarn>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
