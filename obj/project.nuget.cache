@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "HvibZbQky/o=",
+  "success": true,
+  "projectFilePath": "D:\\ダウンロード\\QTBarExtension\\QTBarExtension.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\nekog\\.nuget\\packages\\sharpcompress\\0.48.0\\sharpcompress.0.48.0.nupkg.sha512"
+  ],
+  "logs": []
+}

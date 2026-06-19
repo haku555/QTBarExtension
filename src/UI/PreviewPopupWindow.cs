@@ -1,0 +1,681 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using QTBarExtension.Core;
+using QTBarExtension.Models;
+using static QTBarExtension.Core.NativeMethods;
+
+namespace QTBarExtension.UI;
+
+public class PreviewPopupWindow : Window
+{
+    private readonly PreviewSettings _settings;
+    private readonly ContentControl _mediaHost;
+    private readonly TextBlock _infoText;
+    private MediaElement? _media;
+
+    private readonly DispatcherTimer _posTimer;
+    private TextBlock? _timeLabel;
+    private Slider?    _seekBar;
+    private Button?    _playBtn;
+    private bool       _isPlaying;
+    private bool       _seekDragging;
+    private bool       _mediaHasVideo;
+
+    private Grid? _navRow;
+    private TextBlock? _navLabel;
+    private List<string>? _folderItems;
+    private int _folderIndex;
+    private Grid? _controlPanel;
+
+    // ルートBorderへの参照（テーマ再適用用）
+    private readonly Border _rootBorder;
+
+    public Action<List<string>, int>? OnNavigateRequest { get; set; }
+
+    private double ContentWidth  => Math.Max(_settings.ImageMaxWidth,  _settings.VideoMaxWidth);
+    private double ContentHeight => Math.Max(_settings.ImageMaxHeight, _settings.VideoMaxHeight);
+
+    // ── テーマ判定 ────────────────────────────────────────────────
+    private bool IsDark => _settings.PreviewTheme == "dark" ||
+        (_settings.PreviewTheme == "system" && IsSystemDark());
+
+    private static bool IsSystemDark()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key?.GetValue("AppsUseLightTheme") is int v) return v == 0;
+        }
+        catch { }
+        return false;
+    }
+
+    // ── テーマカラー ──────────────────────────────────────────────
+    private Color BgColor       => IsDark ? Color.FromArgb(245, 32,  32,  32)  : Color.FromArgb(245, 245, 245, 245);
+    private Color BorderColor   => IsDark ? Color.FromRgb(90,  90,  90)        : Color.FromRgb(180, 180, 180);
+    private Color InfoTextColor => IsDark ? Color.FromRgb(220, 220, 220)       : Color.FromRgb(50,  50,  50);
+    private Color ImageBgColor  => IsDark ? Color.FromRgb(20,  20,  20)        : Color.FromRgb(220, 220, 220);
+    private Color LoadingIconColor   => IsDark ? Color.FromRgb(180, 180, 180)  : Color.FromRgb(100, 100, 100);
+    private Color LoadingTitleColor  => IsDark ? Color.FromRgb(200, 200, 200)  : Color.FromRgb(60,  60,  60);
+    private Color LoadingSubColor    => IsDark ? Color.FromRgb(140, 140, 140)  : Color.FromRgb(120, 120, 120);
+    private Color CtrlBtnBg     => IsDark ? Color.FromRgb(60,  60,  60)        : Color.FromRgb(210, 210, 210);
+    private Color CtrlBtnBorder => IsDark ? Color.FromRgb(100, 100, 100)       : Color.FromRgb(160, 160, 160);
+    private Color CtrlBtnFg     => IsDark ? Colors.White                        : Color.FromRgb(30,  30,  30);
+    private Color TimeLabelColor => IsDark ? Color.FromRgb(200, 200, 200)      : Color.FromRgb(70,  70,  70);
+    private Color NavLabelColor  => IsDark ? Color.FromRgb(180, 180, 180)      : Color.FromRgb(80,  80,  80);
+    private Color AudioTextColor => IsDark ? Colors.White                       : Color.FromRgb(30,  30,  30);
+    private Color ErrorTextColor => IsDark ? Color.FromRgb(160, 160, 160)      : Color.FromRgb(100, 100, 100);
+
+    // テキストプレビュー色（設定値があれば使い、"auto"/"system"なら自動）
+    private Color TextFgColor => (_settings.TextForegroundColor == "auto" || string.IsNullOrEmpty(_settings.TextForegroundColor))
+        ? (IsDark ? Color.FromRgb(224, 224, 224) : Color.FromRgb(30,  30,  30))
+        : ParseColor(_settings.TextForegroundColor, IsDark ? Color.FromRgb(224, 224, 224) : Color.FromRgb(30, 30, 30));
+    private Color TextBgColor => (_settings.TextBackgroundColor == "auto" || string.IsNullOrEmpty(_settings.TextBackgroundColor))
+        ? (IsDark ? Color.FromRgb(32,  32,  32)  : Color.FromRgb(250, 250, 250))
+        : ParseColor(_settings.TextBackgroundColor, IsDark ? Color.FromRgb(32, 32, 32) : Color.FromRgb(250, 250, 250));
+
+    public PreviewPopupWindow(PreviewSettings settings)
+    {
+        _settings = settings;
+
+        WindowStyle        = WindowStyle.None;
+        AllowsTransparency = true;
+        Background         = Brushes.Transparent;
+        ShowInTaskbar      = false;
+        Topmost            = true;
+        ResizeMode         = ResizeMode.NoResize;
+        SizeToContent      = SizeToContent.WidthAndHeight;
+        Left = -9999; Top = -9999;
+
+        KeyDown += OnWindowKeyDown;
+
+        _rootBorder = new Border
+        {
+            BorderThickness = new Thickness(1),
+            CornerRadius    = new CornerRadius(4),
+            Padding         = new Thickness(6),
+            Opacity         = settings.OpacityPercent / 100.0,
+        };
+
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        _mediaHost = new ContentControl
+        {
+            Width  = ContentWidth,
+            Height = ContentHeight,
+        };
+        Grid.SetRow(_mediaHost, 0);
+
+        var controlRow = BuildControlRow();
+        Grid.SetRow(controlRow, 1);
+
+        var navRow = BuildNavRow();
+        Grid.SetRow(navRow, 2);
+
+        _infoText = new TextBlock
+        {
+            FontSize     = 11,
+            Margin       = new Thickness(2, 4, 2, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth     = ContentWidth,
+        };
+        Grid.SetRow(_infoText, 3);
+
+        root.Children.Add(_mediaHost);
+        root.Children.Add(controlRow);
+        root.Children.Add(navRow);
+        root.Children.Add(_infoText);
+        _rootBorder.Child = root;
+        Content = _rootBorder;
+
+        _posTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _posTimer.Tick += OnPosTimerTick;
+
+        SourceInitialized += OnSourceInitialized;
+    }
+
+    // テーマカラーをルートBorderとinfoTextに適用
+    private void ApplyTheme()
+    {
+        _rootBorder.Background  = new SolidColorBrush(BgColor);
+        _rootBorder.BorderBrush = new SolidColorBrush(BorderColor);
+        if (_infoText != null)
+            _infoText.Foreground = new SolidColorBrush(InfoTextColor);
+        // 動画コントロールの色更新
+        ApplyControlTheme();
+    }
+
+    private void ApplyControlTheme()
+    {
+        if (_playBtn != null)
+        {
+            _playBtn.Background  = new SolidColorBrush(CtrlBtnBg);
+            _playBtn.Foreground  = new SolidColorBrush(CtrlBtnFg);
+            _playBtn.BorderBrush = new SolidColorBrush(CtrlBtnBorder);
+        }
+        if (_timeLabel != null)
+            _timeLabel.Foreground = new SolidColorBrush(TimeLabelColor);
+        if (_navLabel != null)
+            _navLabel.Foreground = new SolidColorBrush(NavLabelColor);
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        ApplyTheme();
+        var hwnd    = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        SetWindowLong(hwnd, GWL_EXSTYLE,
+            exStyle | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+    }
+
+    private UIElement BuildControlRow()
+    {
+        var panel = new Grid
+        {
+            Visibility = Visibility.Collapsed,
+            Margin     = new Thickness(0, 4, 0, 0),
+            Width      = ContentWidth,
+            Background = Brushes.Transparent,
+            IsHitTestVisible = true,
+        };
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        panel.ColumnDefinitions.Add(new ColumnDefinition());
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        _playBtn = new Button
+        {
+            Content = "▶", Width = 28, Height = 22, FontSize = 11,
+            Padding = new Thickness(0), Margin = new Thickness(0, 0, 6, 0),
+            BorderThickness = new Thickness(1),
+            Cursor = Cursors.Hand, IsHitTestVisible = true, Focusable = true,
+        };
+        _playBtn.Click += OnPlayBtnClick;
+        Grid.SetColumn(_playBtn, 0);
+
+        _seekBar = new Slider
+        {
+            Minimum = 0, Maximum = 1, Value = 0,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 6, 0),
+            Cursor = Cursors.Hand, IsHitTestVisible = true, Focusable = true,
+            IsMoveToPointEnabled = true,
+        };
+        _seekBar.PreviewMouseDown += (_, _) => { _seekDragging = true; };
+        _seekBar.PreviewMouseUp   += (_, _) =>
+        {
+            _seekDragging = false;
+            if (_media != null && _media.NaturalDuration.HasTimeSpan)
+                _media.Position = TimeSpan.FromSeconds(
+                    _seekBar.Value * _media.NaturalDuration.TimeSpan.TotalSeconds);
+        };
+        _seekBar.ValueChanged += (_, _) =>
+        {
+            if (!_seekDragging) return;
+            if (_media != null && _media.NaturalDuration.HasTimeSpan)
+                _media.Position = TimeSpan.FromSeconds(
+                    _seekBar.Value * _media.NaturalDuration.TimeSpan.TotalSeconds);
+        };
+        Grid.SetColumn(_seekBar, 1);
+
+        _timeLabel = new TextBlock
+        {
+            Text = "0:00 / 0:00", FontSize = 10,
+            VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = 80, TextAlignment = TextAlignment.Right,
+        };
+        Grid.SetColumn(_timeLabel, 2);
+
+        panel.Children.Add(_playBtn);
+        panel.Children.Add(_seekBar);
+        panel.Children.Add(_timeLabel);
+
+        _controlPanel = panel;
+        return panel;
+    }
+
+    private UIElement BuildNavRow()
+    {
+        var panel = new Grid
+        {
+            Visibility = Visibility.Collapsed,
+            Margin     = new Thickness(0, 4, 0, 0),
+            Width      = ContentWidth,
+            Background = Brushes.Transparent,
+            IsHitTestVisible = true,
+        };
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        panel.ColumnDefinitions.Add(new ColumnDefinition());
+        panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var prevBtn = MakeNavButton("◀");
+        prevBtn.Click += (_, _) => Navigate(-1);
+        Grid.SetColumn(prevBtn, 0);
+
+        _navLabel = new TextBlock
+        {
+            Text = "", FontSize = 10,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment   = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(_navLabel, 1);
+
+        var nextBtn = MakeNavButton("▶");
+        nextBtn.Click += (_, _) => Navigate(+1);
+        Grid.SetColumn(nextBtn, 2);
+
+        panel.Children.Add(prevBtn);
+        panel.Children.Add(_navLabel);
+        panel.Children.Add(nextBtn);
+
+        _navRow = panel;
+        return panel;
+    }
+
+    private Button MakeNavButton(string label) => new()
+    {
+        Content = label, Width = 32, Height = 22, FontSize = 11,
+        Padding = new Thickness(0),
+        Background  = new SolidColorBrush(CtrlBtnBg),
+        Foreground  = new SolidColorBrush(CtrlBtnFg),
+        BorderBrush = new SolidColorBrush(CtrlBtnBorder),
+        BorderThickness = new Thickness(1),
+        Cursor = Cursors.Hand, IsHitTestVisible = true, Focusable = false,
+    };
+
+    private void Navigate(int delta)
+    {
+        if (_folderItems == null || _folderItems.Count == 0) return;
+        int next = (_folderIndex + delta + _folderItems.Count) % _folderItems.Count;
+        OnNavigateRequest?.Invoke(_folderItems, next);
+    }
+
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_folderItems == null || _folderItems.Count == 0) return;
+        if (e.Key == Key.Left)  { Navigate(-1); e.Handled = true; }
+        if (e.Key == Key.Right) { Navigate(+1); e.Handled = true; }
+    }
+
+    public void ShowLoading(string filePath, double screenX, double screenY)
+    {
+        _mediaHost.Content = null;  // 前の画像が残って見えるのを防ぐ
+        StopMedia();
+        ApplyTheme();
+        _infoText.Text = "";
+        if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;
+        if (_navRow != null) _navRow.Visibility = Visibility.Collapsed;
+
+        string fileName = System.IO.Path.GetFileName(filePath);
+        var panel = new Grid { Width = ContentWidth, Height = ContentHeight,
+            Background = new SolidColorBrush(ImageBgColor) };
+        var inner = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment   = VerticalAlignment.Center,
+        };
+        inner.Children.Add(new TextBlock
+        {
+            Text = "⏳", FontSize = 22,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = new SolidColorBrush(LoadingIconColor),
+            Margin = new Thickness(0, 0, 0, 6),
+        });
+        inner.Children.Add(new TextBlock
+        {
+            Text = "Now Loading...", FontSize = 12, FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(LoadingTitleColor),
+            HorizontalAlignment = HorizontalAlignment.Center,
+        });
+        inner.Children.Add(new TextBlock
+        {
+            Text = fileName, FontSize = 10,
+            Foreground = new SolidColorBrush(LoadingSubColor),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = ContentWidth - 20,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 3, 0, 0),
+        });
+        panel.Children.Add(inner);
+        PlaceContent(panel, screenX, screenY);
+    }
+
+    public void ShowPreview(Services.PreviewInfo info, double screenX, double screenY)
+    {
+        // 古いコンテンツを即時クリア（前の画像が一瞬残って見えるのを防ぐ）
+        _mediaHost.Content = null;
+        StopMedia();
+        ApplyTheme();
+        if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;
+
+        _folderItems = info.FolderItems;
+        _folderIndex = info.FolderIndex;
+        UpdateNavRow();
+
+        UIElement? content = info.Kind switch
+        {
+            Services.PreviewKind.Image => BuildImage(info),
+            Services.PreviewKind.Video => BuildVideo(info),
+            Services.PreviewKind.Audio => BuildAudio(info),
+            Services.PreviewKind.Text  => BuildText(info),
+            _                          => null,
+        };
+
+        if (content == null) { Hide(); return; }
+
+        _infoText.Text = BuildInfoText(info);
+
+        if (_controlPanel != null)
+            _controlPanel.Visibility = (_media != null && _mediaHasVideo)
+                ? Visibility.Visible : Visibility.Collapsed;
+
+        PlaceContent(content, screenX, screenY);
+
+        if (_media != null)
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                _media?.Play();
+                _isPlaying = true;
+                if (_playBtn != null) _playBtn.Content = "❙❙";
+                _posTimer.Start();
+            }, DispatcherPriority.Loaded);
+        }
+    }
+
+    private void UpdateNavRow()
+    {
+        if (_navRow == null || _navLabel == null) return;
+        if (_folderItems != null && _folderItems.Count > 1)
+        {
+            _navLabel.Text = $"{_folderIndex + 1} / {_folderItems.Count}";
+            _navRow.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _navRow.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void PlaceContent(UIElement content, double screenX, double screenY)
+    {
+        _mediaHost.Content = content;
+        Left = screenX;
+        Top  = screenY;
+        if (!IsVisible) Show();
+        UpdateLayout();
+        ClampToWorkArea(screenX, screenY);
+    }
+
+    private void ClampToWorkArea(double screenX, double screenY)
+    {
+        double w = ActualWidth, h = ActualHeight;
+        if (w <= 0 || h <= 0) return;
+        try
+        {
+            var pt = new NativeMethods.POINT { X = (int)screenX, Y = (int)screenY };
+            IntPtr hMon = NativeMethodsExtra.MonitorFromPoint(pt, NativeMethodsExtra.MONITOR_DEFAULTTONEAREST);
+            if (hMon == IntPtr.Zero) return;
+            var mi = new NativeMethodsExtra.MONITORINFO
+            {
+                cbSize = (uint)Marshal.SizeOf<NativeMethodsExtra.MONITORINFO>()
+            };
+            if (!NativeMethodsExtra.GetMonitorInfo(hMon, ref mi)) return;
+            double left = screenX, top = screenY;
+            const int margin = 4;
+            if (left + w > mi.rcWork.Right)  left = mi.rcWork.Right  - w - margin;
+            if (top  + h > mi.rcWork.Bottom) top  = mi.rcWork.Bottom - h - margin;
+            if (left < mi.rcWork.Left) left = mi.rcWork.Left + margin;
+            if (top  < mi.rcWork.Top)  top  = mi.rcWork.Top  + margin;
+            if (Math.Abs(left - Left) > 0.5) Left = left;
+            if (Math.Abs(top  - Top)  > 0.5) Top  = top;
+        }
+        catch { }
+    }
+
+    private void OnPlayBtnClick(object sender, RoutedEventArgs e)
+    {
+        if (_media == null) return;
+        if (_isPlaying)
+        {
+            _media.Pause(); _isPlaying = false;
+            if (_playBtn != null) _playBtn.Content = "▶";
+            _posTimer.Stop();
+        }
+        else
+        {
+            _media.Play(); _isPlaying = true;
+            if (_playBtn != null) _playBtn.Content = "❙❙";
+            _posTimer.Start();
+        }
+    }
+
+    private void OnPosTimerTick(object? sender, EventArgs e)
+    {
+        if (_media == null || _seekDragging) return;
+        try
+        {
+            double pos = _media.Position.TotalSeconds;
+            double dur = _media.NaturalDuration.HasTimeSpan
+                ? _media.NaturalDuration.TimeSpan.TotalSeconds : 0;
+            if (_seekBar != null && dur > 0) _seekBar.Value = pos / dur;
+            if (_timeLabel != null) _timeLabel.Text = $"{FormatTime(pos)} / {FormatTime(dur)}";
+        }
+        catch { }
+    }
+
+    private static string FormatTime(double s)
+    {
+        var ts = TimeSpan.FromSeconds(Math.Max(0, s));
+        return ts.TotalHours >= 1
+            ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}"
+            : $"{ts.Minutes}:{ts.Seconds:D2}";
+    }
+
+    private UIElement BuildImage(Services.PreviewInfo info)
+    {
+        _mediaHasVideo = false;
+        if (info.Image == null) return MakeErrorBox("画像を読み込めませんでした");
+        double iw = info.Image.PixelWidth, ih = info.Image.PixelHeight;
+        if (iw <= 0 || ih <= 0) return MakeErrorBox("画像サイズ不明");
+        double scale = Math.Min(Math.Min(ContentWidth / iw, ContentHeight / ih), 1.0);
+        var grid = new Grid
+        {
+            Width = ContentWidth, Height = ContentHeight,
+            Background = new SolidColorBrush(ImageBgColor),
+        };
+        grid.Children.Add(new System.Windows.Controls.Image
+        {
+            Source = info.Image,
+            Width  = Math.Floor(iw * scale), Height = Math.Floor(ih * scale),
+            Stretch = Stretch.Fill,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment   = VerticalAlignment.Center,
+            SnapsToDevicePixels = true,
+        });
+        return grid;
+    }
+
+    private UIElement? BuildVideo(Services.PreviewInfo info)
+    {
+        if (string.IsNullOrEmpty(info.TempMediaPath)) { _mediaHasVideo = false; return null; }
+        _mediaHasVideo = true;
+        _media = new MediaElement
+        {
+            Source = new Uri(info.TempMediaPath, UriKind.Absolute),
+            LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual,
+            Stretch = Stretch.Uniform, Volume = _settings.PlaybackVolume / 100.0,
+            Width = ContentWidth, Height = ContentHeight,
+        };
+        var capturedInfo = info;
+        _media.MediaOpened += (_, _) =>
+        {
+            if (_media == null) return;
+            double dur = _media.NaturalDuration.HasTimeSpan
+                ? _media.NaturalDuration.TimeSpan.TotalSeconds : 0;
+            if (_timeLabel != null) _timeLabel.Text = $"0:00 / {FormatTime(dur)}";
+            if (dur > 0)
+            {
+                capturedInfo.Duration = TimeSpan.FromSeconds(dur);
+                _infoText.Text = BuildInfoText(capturedInfo);
+            }
+        };
+        _media.MediaFailed += (_, _) => { _mediaHasVideo = false; };
+        if (_settings.RememberPlaybackPosition &&
+            _settings.PlaybackPositions.TryGetValue(info.DisplayPath, out double pos))
+            _media.Position = TimeSpan.FromSeconds(pos);
+        return _media;
+    }
+
+    private UIElement? BuildAudio(Services.PreviewInfo info)
+    {
+        if (string.IsNullOrEmpty(info.TempMediaPath)) { _mediaHasVideo = false; return null; }
+        _mediaHasVideo = false;
+        _media = new MediaElement
+        {
+            Source = new Uri(info.TempMediaPath, UriKind.Absolute),
+            LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual,
+            Volume = _settings.PlaybackVolume / 100.0, Width = 0, Height = 0,
+        };
+        if (_settings.RememberPlaybackPosition &&
+            _settings.PlaybackPositions.TryGetValue(info.DisplayPath, out double pos))
+            _media.Position = TimeSpan.FromSeconds(pos);
+
+        var grid = new Grid
+        {
+            Width = ContentWidth, Height = ContentHeight,
+            Background = new SolidColorBrush(ImageBgColor),
+        };
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment   = VerticalAlignment.Center,
+        };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "🎵", FontSize = 32,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "オーディオ再生中...", FontSize = 12,
+            Foreground = new SolidColorBrush(AudioTextColor),
+            HorizontalAlignment = HorizontalAlignment.Center
+        });
+        panel.Children.Add(_media);
+        grid.Children.Add(panel);
+        return grid;
+    }
+
+    private UIElement BuildText(Services.PreviewInfo info)
+    {
+        _mediaHasVideo = false;
+        return new TextBox
+        {
+            Text = info.TextContent, IsReadOnly = true, TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily(_settings.TextFontFamily), FontSize = _settings.TextFontSize,
+            Foreground = new SolidColorBrush(TextFgColor),
+            Background = new SolidColorBrush(TextBgColor),
+            BorderThickness = new Thickness(0),
+            Width = _settings.TextMaxWidth, Height = _settings.TextMaxHeight,
+            VerticalScrollBarVisibility   = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+    }
+
+    private UIElement MakeErrorBox(string msg)
+    {
+        var grid = new Grid
+        {
+            Width = ContentWidth, Height = ContentHeight,
+            Background = new SolidColorBrush(ImageBgColor),
+        };
+        grid.Children.Add(new TextBlock
+        {
+            Text = msg, FontSize = 11,
+            Foreground = new SolidColorBrush(ErrorTextColor),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment   = VerticalAlignment.Center,
+        });
+        return grid;
+    }
+
+    private string BuildInfoText(Services.PreviewInfo info)
+    {
+        var parts = new List<string> { info.FileName };
+        if (info.SizeBytes > 0) parts.Add(FormatSize(info.SizeBytes));
+        if (info.Modified.HasValue) parts.Add(info.Modified.Value.ToString("yyyy/MM/dd HH:mm"));
+        if (!string.IsNullOrEmpty(info.Dimensions)) parts.Add(info.Dimensions);
+        if (info.Duration.HasValue) parts.Add("🎬 " + FormatTime(info.Duration.Value.TotalSeconds));
+        if (info.IsArchiveEntry) parts.Add("📦 圧縮内");
+        if (info.IsFolderItem && !info.IsArchiveEntry) parts.Add("📁 フォルダ内");
+        if (info.IsNetworkPath) parts.Add("🌐 ネットワーク");
+        return string.Join("  |  ", parts);
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        double size = bytes; int u = 0;
+        while (size >= 1024 && u < units.Length - 1) { size /= 1024; u++; }
+        return $"{size:0.#} {units[u]}";
+    }
+
+    private static Color ParseColor(string hex, Color fallback)
+    {
+        try
+        {
+            hex = hex.TrimStart('#');
+            if (hex.Length != 6) return fallback;
+            return Color.FromRgb(
+                Convert.ToByte(hex[0..2], 16),
+                Convert.ToByte(hex[2..4], 16),
+                Convert.ToByte(hex[4..6], 16));
+        }
+        catch { return fallback; }
+    }
+
+    public double? GetCurrentMediaPositionSeconds()
+    {
+        try { return _media?.Position.TotalSeconds; } catch { return null; }
+    }
+
+    public void StopMedia()
+    {
+        _posTimer.Stop();
+        _isPlaying = false; _seekDragging = false; _mediaHasVideo = false;
+        if (_playBtn  != null) _playBtn.Content  = "▶";
+        if (_seekBar  != null) _seekBar.Value    = 0;
+        if (_timeLabel != null) _timeLabel.Text  = "0:00 / 0:00";
+        try
+        {
+            if (_media != null) { _media.Stop(); _media.Source = null; _media = null; }
+        }
+        catch { }
+    }
+
+    public new void Hide()
+    {
+        StopMedia();
+        _mediaHost.Content = null;
+        _infoText.Text = "";
+        _folderItems = null;
+        if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;
+        if (_navRow != null) _navRow.Visibility = Visibility.Collapsed;
+        base.Hide();
+    }
+}
