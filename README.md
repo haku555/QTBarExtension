@@ -74,6 +74,34 @@ dotnet run
 
 ---
 
+## 配布用シングルファイル発行（.NETランタイム不要）
+
+通常の `dotnet build` 出力は**フレームワーク依存**で、実行先PCに .NET 10 Desktop Runtime が
+必要な上、`bin\Release\net10.0-windows\` フォルダ内の依存DLL群もすべて揃っている必要があります。
+
+配布先に .NET ランタイムが入っていなくても `QTBarExtension.exe` 単体をダブルクリックするだけで
+起動できるようにしたい場合は、以下のシングルファイル発行コマンドを使用してください。
+
+```powershell
+cd QTBarExtension
+dotnet publish -c Release -r win-x64
+```
+
+出力は `bin\Release\net10.0-windows\win-x64\publish\` フォルダに生成されます。  
+このフォルダの中身（`QTBarExtension.exe` と `icon\` フォルダ）をそのまま配布してください。
+
+> `icon\` フォルダは `QTBarExtension.exe` と同じ階層に置いたままにしてください。
+> 万が一なくても、exeに埋め込まれたアイコンに自動でフォールバックするため動作上の支障はありませんが、
+> トレイアイコン等が標準アイコンになる場合があります。
+
+通常の開発ビルド（`dotnet build -c Release`）の挙動・出力先には一切影響しません。
+シングルファイル発行はランタイム同梱のため、通常ビルドよりファイルサイズが大きくなります。
+発行時は単一exe内のアセンブリを圧縮（`EnableCompressionInSingleFile`）してサイズを抑えており、
+トリミングは行っていないため動作面のリスクはありません。初回起動は展開処理のぶん
+わずかに遅くなりますが、体感できるほどの差ではありません。
+
+---
+
 ## かんたんセットアップ（初回起動後）
 
 ビルドした `QTBarExtension.exe` を一度起動すると、タスクトレイにアイコンが常駐します。  

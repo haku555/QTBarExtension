@@ -29,6 +29,33 @@
     <ApplicationIcon>icon\QTBarExtension.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <!--
+    シングルファイル発行設定（dotnet publish -c Release -r win-x64 専用）。
+    MSBuild組み込みの $(_IsPublishing) 条件を使い、publish実行時のみ有効化する。
+    これにより通常の開発ビルド（dotnet build -c Release）の出力パスや挙動は一切変わらない。
+    publish時は .NETランタイム同梱・依存DLL同梱の単一exeが生成され、配布先PCに
+    .NET 10ランタイムが入っていなくても QTBarExtension.exe 単体でダブルクリック起動できる。
+    EnableCompressionInSingleFileによりファイルサイズを圧縮（トリミングは未使用＝動作リスクなし）。
+    生成exeは自己展開型のため初回起動がやや重くなる。
+  -->
+  <PropertyGroup Condition="'$(_IsPublishing)' == 'true'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- 発行時に.pdb等を削って単一exeをスリム化（buildには影響しない） -->
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>ja</SatelliteResourceLanguages>
+    <!--
+      単一exe内に格納する各アセンブリをdeflate圧縮し、ファイルサイズを縮小する
+      （概ね20〜30%程度の削減が見込める）。トリミングと異なりコード除去は行わないため、
+      リフレクション・COM相互運用（ShortcutHelperのWScript.Shell等）・WinFormsの
+      動的な型解決を含め動作リスクはほぼない。展開時にCPUで解凍するぶん初回起動が
+      わずかに伸びるが、体感できるほどの差ではない。
+    -->
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
   <ItemGroup>
     <!-- zip以外の圧縮フォルダ (rar, 7z, tar, gz 等) のプレビュー対応のため追加 -->
     <!-- NU1902: GHSA-6c8g-7p36-r338 は WriteToDirectory (展開API) 使用時のみ影響。
