@@ -51,7 +51,10 @@ internal static class StartupRegistration
 
     private static string GetQuotedExePath()
     {
-        string exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+        // Environment.ProcessPath は PublishSingleFile 時でも必ず .exe 本体のパスを返す。
+        // Process.MainModule?.FileName はシングルファイル発行の一時展開フォルダを返す場合があるため使わない。
+        string exePath = Environment.ProcessPath
+            ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("実行ファイルパスを取得できませんでした。");
         return $"\"{exePath}\"";
     }

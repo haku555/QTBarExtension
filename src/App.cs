@@ -204,8 +204,9 @@ public partial class App : Application
     {
         try
         {
+            // Environment.ProcessPath は PublishSingleFile 時でも .exe 本体のパスを返す
             string? exeDir = Path.GetDirectoryName(
-                System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "");
+                Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "");
             if (exeDir != null)
             {
                 string iconPath = Path.Combine(exeDir, "icon", "QTBarExtension.ico");
@@ -227,7 +228,7 @@ public partial class App : Application
 
         try
         {
-            string? exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            string? exePath = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
             if (exePath != null)
             {
                 var extracted = System.Drawing.Icon.ExtractAssociatedIcon(exePath);
@@ -244,7 +245,7 @@ public partial class App : Application
     {
         try
         {
-            string? exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            string? exePath = Environment.ProcessPath ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
             if (exePath == null) return;
 
             string desktop      = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
