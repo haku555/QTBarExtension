@@ -17,6 +17,7 @@ public partial class App : Application
     private AppSettings                             _settings = new();
     private System.Windows.Forms.NotifyIcon?        _trayIcon;
     private System.Windows.Forms.ToolStripMenuItem? _autoStartItem;
+    private SettingsWindow?                          _settingsWindow;
 
     // フォルダビュー拡張（Shift+ホイール横スクロール / フルネームツールチップ）
     private ExplorerViewEnhancer? _viewEnhancer;
@@ -92,6 +93,37 @@ public partial class App : Application
 
     private void SaveSettings() => SettingsStore.Save(_settings);
 
+    /// <summary>
+    /// 設定ウィンドウを表示する。既に開いている場合は新規生成せず、
+    /// 既存のウィンドウを前面に出してアクティブ化するだけにする（二重起動防止）。
+    /// </summary>
+    private void ShowSettingsWindow()
+    {
+        if (_settingsWindow != null)
+        {
+            if (_settingsWindow.WindowState == WindowState.Minimized)
+                _settingsWindow.WindowState = WindowState.Normal;
+            _settingsWindow.Activate();
+            return;
+        }
+
+        TrackSettingsWindow(new SettingsWindow(_settings, SaveSettings,
+            () => { foreach (var b in _bars.Values) { b.RebuildTabStrip(); } },
+            _previewService?.Provider));
+    }
+
+    /// <summary>
+    /// 設定ウィンドウのインスタンスを追跡対象として登録する。
+    /// Reload()による内部的な作り直し（Reopenedイベント）にも追従する。
+    /// </summary>
+    private void TrackSettingsWindow(SettingsWindow win)
+    {
+        _settingsWindow = win;
+        win.Closed   += (_, _) => { if (_settingsWindow == win) _settingsWindow = null; };
+        win.Reopened += next => TrackSettingsWindow(next);
+        win.Show();
+    }
+
     private void SetupTrayIcon()
     {
         _trayIcon = new System.Windows.Forms.NotifyIcon
@@ -103,13 +135,7 @@ public partial class App : Application
         var menu = new System.Windows.Forms.ContextMenuStrip();
 
         var settingsItem = new System.Windows.Forms.ToolStripMenuItem("設定");
-        settingsItem.Click += (_, _) => Dispatcher.InvokeAsync(() =>
-        {
-            var win = new SettingsWindow(_settings, SaveSettings,
-                () => { foreach (var b in _bars.Values) { b.RebuildTabStrip(); } },
-                _previewService?.Provider);
-            win.Show();
-        });
+        settingsItem.Click += (_, _) => Dispatcher.InvokeAsync(ShowSettingsWindow);
 
         var shortcutItem = new System.Windows.Forms.ToolStripMenuItem("デスクトップにショートカットを作成");
         shortcutItem.Click += (_, _) => CreateDesktopShortcut();
@@ -149,13 +175,22 @@ public partial class App : Application
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
         _trayIcon.ContextMenuStrip  = menu;
-        _trayIcon.DoubleClick += (_, _) => Dispatcher.InvokeAsync(() =>
+        _trayIcon.DoubleClick += (_, _) => Dispatcher.InvokeAsync(ShowSettingsWindow);
+    }
+
+    /// <summary>
+    /// 設定ウィンドウ（一般タブ）の「Windowsスタートアップ時に自動起動」チェックボックスから
+    /// 呼び出され、トレイ右クリックメニュー側の「Windows起動時に自動実行」のチェック状態を
+    /// 現在のレジストリ実態（StartupRegistration.IsEnabled）に同期させる。
+    /// 設定側→トレイ側の一方向だが、トレイ側→設定側は設定ウィンドウを開き直す際に
+    /// IsEnabled()を再読込することで自然に反映される。
+    /// </summary>
+    public static void SyncAutoStartMenuState()
+    {
+        if (Current is App app && app._autoStartItem != null)
         {
-            var win = new SettingsWindow(_settings, SaveSettings,
-                () => { foreach (var b in _bars.Values) { b.RebuildTabStrip(); } },
-                _previewService?.Provider);
-            win.Show();
-        });
+            app._autoStartItem.Checked = StartupRegistration.IsEnabled();
+        }
     }
 
     /// <summary>

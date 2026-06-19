@@ -32,6 +32,8 @@ public class AppSettings
     public List<TabGroup>    TabGroups        { get; set; } = [];
     public List<HistoryItem> History          { get; set; } = [];
     public int               MaxHistory       { get; set; } = 200;
+    // 注意：自動起動の実際の有効/無効はレジストリ（Core.StartupRegistration）が正であり、
+    // このフラグはUIから参照/更新されない。settings.jsonの後方互換性のためフィールドのみ残置。
     public bool              StartWithWindows { get; set; } = true;
     public int               BarHeight        { get; set; } = 30;
     public string            Theme            { get; set; } = "system";

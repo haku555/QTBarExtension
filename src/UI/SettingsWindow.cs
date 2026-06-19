@@ -30,9 +30,9 @@ public class SettingsWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
 
         var tab = new TabControl { Margin = new Thickness(8) };
+        tab.Items.Add(MakeGeneralTab());
         tab.Items.Add(MakeGroupsTab());
         tab.Items.Add(MakeHistoryTab());
-        tab.Items.Add(MakeGeneralTab());
         tab.Items.Add(MakeSubFolderMenuTab());
         tab.Items.Add(MakePreviewGeneralTab());
         tab.Items.Add(MakePreviewExtensionsTab());
@@ -217,14 +217,17 @@ public class SettingsWindow : Window
         var item  = new TabItem { Header = "一般" };
         var panel = new StackPanel { Margin = new Thickness(12) };
 
+        // 自動起動の有効/無効はレジストリ（Core.StartupRegistration）を唯一の正とする。
+        // トレイ右クリックメニューの「Windows起動時に自動実行」と状態を共有するため、
+        // ここでも実際のレジストリ状態を読み取って表示する（AppSettings.StartWithWindowsは参照しない）。
         var startup = new CheckBox
         {
             Content   = "Windowsスタートアップ時に自動起動",
-            IsChecked = _settings.StartWithWindows,
+            IsChecked = QTBarExtension.Core.StartupRegistration.IsEnabled(),
             Margin    = new Thickness(0, 0, 0, 8),
         };
-        startup.Checked   += (_, _) => { _settings.StartWithWindows = true;  _save(); SetStartup(true);  };
-        startup.Unchecked += (_, _) => { _settings.StartWithWindows = false; _save(); SetStartup(false); };
+        startup.Checked   += (_, _) => SetStartup(true,  startup);
+        startup.Unchecked += (_, _) => SetStartup(false, startup);
 
         // テーマ選択
         var themeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
@@ -878,18 +881,40 @@ public class SettingsWindow : Window
     {
         _refresh();
         Close();
-        new SettingsWindow(_settings, _save, _refresh, _previewProvider).Show();
+        var next = new SettingsWindow(_settings, _save, _refresh, _previewProvider);
+        Reopened?.Invoke(next);
+        next.Show();
     }
 
-    private static void SetStartup(bool enable)
+    /// <summary>
+    /// Reload()によりこのウィンドウが閉じられ、新しいインスタンスに差し替わった際に発火する。
+    /// App側で「現在開いている設定ウィンドウ」の参照を追従させ、二重起動防止を維持するために使う。
+    /// </summary>
+    public event Action<SettingsWindow>? Reopened;
+
+    /// <summary>
+    /// 自動起動の有効/無効をレジストリに反映し、トレイ右クリックメニュー側の
+    /// チェック状態も同期させる（App.SyncAutoStartMenuState経由）。
+    /// </summary>
+    private static void SetStartup(bool enable, CheckBox source)
     {
-        const string key  = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-        const string name = "QTBarExtension";
-        using var reg = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(key, true);
-        if (reg == null) return;
-        if (enable)
-            reg.SetValue(name, System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "");
-        else
-            reg.DeleteValue(name, false);
+        try
+        {
+            if (enable)
+                QTBarExtension.Core.StartupRegistration.Enable();
+            else
+                QTBarExtension.Core.StartupRegistration.Disable();
+        }
+        catch (Exception ex)
+        {
+            // 失敗時はレジストリの実態に表示を合わせ直す
+            source.IsChecked = QTBarExtension.Core.StartupRegistration.IsEnabled();
+            MessageBox.Show($"自動起動設定の変更に失敗しました。\n{ex.Message}",
+                "QTBarExtension", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // トレイメニューの「Windows起動時に自動実行」項目のチェックも連動させる
+        QTBarExtension.App.SyncAutoStartMenuState();
     }
 }
