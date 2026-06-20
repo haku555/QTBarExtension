@@ -68,6 +68,7 @@ public partial class App : Application
         if (_subFolderMenuService != null)
             bar.SetSubFolderMenuService(_subFolderMenuService);
         bar.Show();
+        bar.RefreshTabBarVisibility();
     }
 
     private void OnMoved(ExplorerWindowInfo info)
@@ -190,6 +191,20 @@ public partial class App : Application
         if (Current is App app && app._autoStartItem != null)
         {
             app._autoStartItem.Checked = StartupRegistration.IsEnabled();
+        }
+    }
+
+    /// <summary>
+    /// 設定ウィンドウ（一般タブ）の「タブバーを表示する」チェックボックスから呼び出され、
+    /// 現在存在する全Explorerウィンドウのタブバーに対して表示/非表示を即座に反映する。
+    /// AppSettings.ShowTabBarは呼び出し側で既に更新済みである前提。
+    /// </summary>
+    public static void ApplyTabBarVisibility()
+    {
+        if (Current is App app)
+        {
+            foreach (var bar in app._bars.Values)
+                bar.RefreshTabBarVisibility();
         }
     }
 

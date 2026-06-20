@@ -444,6 +444,10 @@ public class OverlayBar : Window
 
     private void ApplyPosition()
     {
+        // タブバー非表示設定時は、SetWindowPos(SWP_SHOWWINDOW)による意図しない
+        // 再表示を防ぐためここでガードする（PositionToExplorer経由の呼び出し全てに効く）。
+        if (!_settings.ShowTabBar) return;
+
         var barHwnd = new WindowInteropHelper(this).Handle;
         if (barHwnd == IntPtr.Zero) return;
         if (!_explorer.TryGetBarInsertionPoint(out var mainRect, out int insertY)) return;
@@ -464,6 +468,8 @@ public class OverlayBar : Window
 
     public void ShowBar()
     {
+        // 設定でタブバーがOFFにされている場合は表示せず、非表示処理に倒す
+        if (!_settings.ShowTabBar) { HideBar(); return; }
         if (Visibility != Visibility.Visible) Visibility = Visibility.Visible;
         PositionToExplorer();
     }
@@ -477,6 +483,25 @@ public class OverlayBar : Window
                 _explorer.RestoreShellView(insertY);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// 「タブバーを表示する」設定（AppSettings.ShowTabBar）とExplorerウィンドウの
+    /// 現在の表示状態（最小化等）の両方から、このバーの表示/非表示を再評価する。
+    /// 設定画面でのチェック切り替え時（App.ApplyTabBarVisibility経由）や、
+    /// バー新規作成時（App.EnsureBar）から呼ばれる。
+    /// </summary>
+    public void RefreshTabBarVisibility()
+    {
+        if (_settings.ShowTabBar && _explorer.IsVisible)
+        {
+            ShowBar();
+            RepushShellView();
+        }
+        else
+        {
+            HideBar();
+        }
     }
 
     /// <summary>

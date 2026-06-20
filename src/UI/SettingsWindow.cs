@@ -217,6 +217,26 @@ public class SettingsWindow : Window
         var item  = new TabItem { Header = "一般" };
         var panel = new StackPanel { Margin = new Thickness(12) };
 
+        // タブバー自体の表示/非表示（デフォルトON）
+        var showTabBar = new CheckBox
+        {
+            Content   = "タブバーを表示する",
+            IsChecked = _settings.ShowTabBar,
+            Margin    = new Thickness(0, 0, 0, 8),
+        };
+        showTabBar.Checked   += (_, _) =>
+        {
+            _settings.ShowTabBar = true;
+            _save();
+            QTBarExtension.App.ApplyTabBarVisibility();
+        };
+        showTabBar.Unchecked += (_, _) =>
+        {
+            _settings.ShowTabBar = false;
+            _save();
+            QTBarExtension.App.ApplyTabBarVisibility();
+        };
+
         // 自動起動の有効/無効はレジストリ（Core.StartupRegistration）を唯一の正とする。
         // トレイ右クリックメニューの「Windows起動時に自動実行」と状態を共有するため、
         // ここでも実際のレジストリ状態を読み取って表示する（AppSettings.StartWithWindowsは参照しない）。
@@ -328,6 +348,7 @@ public class SettingsWindow : Window
             Margin = new Thickness(0, 16, 0, 0),
         };
 
+        panel.Children.Add(showTabBar);
         panel.Children.Add(startup);
         panel.Children.Add(themeRow);
         panel.Children.Add(heightRow);

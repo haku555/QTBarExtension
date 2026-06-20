@@ -35,6 +35,9 @@ public class AppSettings
     // 注意：自動起動の実際の有効/無効はレジストリ（Core.StartupRegistration）が正であり、
     // このフラグはUIから参照/更新されない。settings.jsonの後方互換性のためフィールドのみ残置。
     public bool              StartWithWindows { get; set; } = true;
+    // タブバー自体の表示/非表示（デフォルトON）。OFFにすると全Explorerウィンドウで
+    // タブバーを非表示にし、ShellViewを元の位置（フルサイズ）に戻す。
+    public bool               ShowTabBar      { get; set; } = true;
     public int               BarHeight        { get; set; } = 30;
     public string            Theme            { get; set; } = "system";
     public string            NewTabAction     { get; set; } = "duplicate";
