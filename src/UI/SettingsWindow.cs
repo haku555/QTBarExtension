@@ -343,7 +343,7 @@ public class SettingsWindow : Window
 
         var version = new TextBlock
         {
-            Text = "QTBarExtension v1.0  |  .NET 10 LTS  |  Windows 11 対応",
+            Text = "QTBarExtension v1.1  |  .NET 10 LTS  |  Windows 11 対応",
             FontSize = 10, Foreground = Brushes.Gray,
             Margin = new Thickness(0, 16, 0, 0),
         };

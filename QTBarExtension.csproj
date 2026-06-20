@@ -22,9 +22,9 @@
     <StartupObject>QTBarExtension.Program</StartupObject>
     <!-- DPI設定はマニフェストではなくここで指定（警告 WFO0003 対応） -->
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
-    <InformationalVersion>1.0.0 (.NET 10 LTS)</InformationalVersion>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>1.1.0 (.NET 10 LTS)</InformationalVersion>
     <!-- exe本体・タスクバー・ショートカットに表示されるアプリケーションアイコン -->
     <ApplicationIcon>icon\QTBarExtension.ico</ApplicationIcon>
   </PropertyGroup>

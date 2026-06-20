@@ -1,10 +1,14 @@
 {
   "version": 2,
-  "dgSpecHash": "HvibZbQky/o=",
+  "dgSpecHash": "3hml1/ofF4w=",
   "success": true,
   "projectFilePath": "D:\\ダウンロード\\QTBarExtension\\QTBarExtension.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\nekog\\.nuget\\packages\\sharpcompress\\0.48.0\\sharpcompress.0.48.0.nupkg.sha512"
+    "C:\\Users\\nekog\\.nuget\\packages\\microsoft.net.illink.tasks\\10.0.9\\microsoft.net.illink.tasks.10.0.9.nupkg.sha512",
+    "C:\\Users\\nekog\\.nuget\\packages\\sharpcompress\\0.48.0\\sharpcompress.0.48.0.nupkg.sha512",
+    "C:\\Users\\nekog\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\10.0.9\\microsoft.netcore.app.runtime.win-x64.10.0.9.nupkg.sha512",
+    "C:\\Users\\nekog\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\10.0.9\\microsoft.windowsdesktop.app.runtime.win-x64.10.0.9.nupkg.sha512",
+    "C:\\Users\\nekog\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\10.0.9\\microsoft.aspnetcore.app.runtime.win-x64.10.0.9.nupkg.sha512"
   ],
   "logs": []
 }

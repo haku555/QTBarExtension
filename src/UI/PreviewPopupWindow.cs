@@ -42,6 +42,10 @@ public class PreviewPopupWindow : Window
     private double ContentWidth  => Math.Max(_settings.ImageMaxWidth,  _settings.VideoMaxWidth);
     private double ContentHeight => Math.Max(_settings.ImageMaxHeight, _settings.VideoMaxHeight);
 
+    // 画像/動画のアスペクト比に合わせて縮小した際、シークバー等のコントロールが
+    // 潰れすぎないようにする最小辺長（px）
+    private const double MinContentSide = 80;
+
     // ── テーマ判定 ────────────────────────────────────────────────
     private bool IsDark => _settings.PreviewTheme == "dark" ||
         (_settings.PreviewTheme == "system" && IsSystemDark());
@@ -316,6 +320,8 @@ public class PreviewPopupWindow : Window
         _infoText.Text = "";
         if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;
         if (_navRow != null) _navRow.Visibility = Visibility.Collapsed;
+        // 前回表示分でアスペクト比に合わせて縮小されている可能性があるため既定サイズへ戻す
+        SetContentSize(ContentWidth, ContentHeight);
 
         string fileName = System.IO.Path.GetFileName(filePath);
         var panel = new Grid { Width = ContentWidth, Height = ContentHeight,
@@ -359,6 +365,9 @@ public class PreviewPopupWindow : Window
         StopMedia();
         ApplyTheme();
         if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;
+        // 前回表示分でアスペクト比に合わせて縮小されている可能性があるため既定サイズへ戻す。
+        // 画像/動画の場合はBuildImage/BuildVideo(MediaOpened)が後で実サイズに上書きする。
+        SetContentSize(ContentWidth, ContentHeight);
 
         _folderItems = info.FolderItems;
         _folderIndex = info.FolderIndex;
@@ -407,6 +416,18 @@ public class PreviewPopupWindow : Window
         {
             _navRow.Visibility = Visibility.Collapsed;
         }
+    }
+
+    // 画像/動画の実表示サイズ(余白なし)に合わせて、メディアホストおよび関連UI行の幅・高さを揃える。
+    // 横幅はコントロール行・ナビ行・情報テキストの折返し幅にも反映し、細い画像でも
+    // 不自然に幅広いバーが残らないようにする。
+    private void SetContentSize(double width, double height)
+    {
+        _mediaHost.Width  = width;
+        _mediaHost.Height = height;
+        if (_controlPanel != null) _controlPanel.Width = width;
+        if (_navRow != null) _navRow.Width = width;
+        _infoText.MaxWidth = width;
     }
 
     private void PlaceContent(UIElement content, double screenX, double screenY)
@@ -491,20 +512,28 @@ public class PreviewPopupWindow : Window
         double iw = info.Image.PixelWidth, ih = info.Image.PixelHeight;
         if (iw <= 0 || ih <= 0) return MakeErrorBox("画像サイズ不明");
         double scale = Math.Min(Math.Min(ContentWidth / iw, ContentHeight / ih), 1.0);
+        // 余白が出ないよう、Grid自体をスケール後の実サイズに合わせる（最小サイズのみ下支え）
+        double dispW = Math.Max(Math.Floor(iw * scale), MinContentSide);
+        double dispH = Math.Max(Math.Floor(ih * scale), MinContentSide);
         var grid = new Grid
         {
-            Width = ContentWidth, Height = ContentHeight,
+            Width = dispW, Height = dispH,
             Background = new SolidColorBrush(ImageBgColor),
         };
-        grid.Children.Add(new System.Windows.Controls.Image
+        var imageElement = new System.Windows.Controls.Image
         {
             Source = info.Image,
-            Width  = Math.Floor(iw * scale), Height = Math.Floor(ih * scale),
+            Width  = dispW, Height = dispH,
             Stretch = Stretch.Fill,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment   = VerticalAlignment.Center,
-            SnapsToDevicePixels = true,
-        });
+        };
+        // 縮小時のジャギー対策：高品質スケーリング（Fant法相当）を明示。
+        // SnapsToDevicePixelsは縮小描画ではかえってギザつきの原因になるため付与しない。
+        RenderOptions.SetBitmapScalingMode(imageElement, BitmapScalingMode.HighQuality);
+        RenderOptions.SetEdgeMode(imageElement, EdgeMode.Unspecified);
+        grid.Children.Add(imageElement);
+        SetContentSize(dispW, dispH);
         return grid;
     }
 
@@ -519,6 +548,8 @@ public class PreviewPopupWindow : Window
             Stretch = Stretch.Uniform, Volume = _settings.PlaybackVolume / 100.0,
             Width = ContentWidth, Height = ContentHeight,
         };
+        // 縮小表示時のジャギー対策（WPF合成レイヤーでのリサイズ品質を改善）
+        RenderOptions.SetBitmapScalingMode(_media, BitmapScalingMode.HighQuality);
         var capturedInfo = info;
         _media.MediaOpened += (_, _) =>
         {
@@ -531,12 +562,38 @@ public class PreviewPopupWindow : Window
                 capturedInfo.Duration = TimeSpan.FromSeconds(dur);
                 _infoText.Text = BuildInfoText(capturedInfo);
             }
+            // 実解像度が判明した時点でアスペクト比に合わせてリサイズ（余白を排除）
+            ResizeVideoToNaturalAspect();
         };
         _media.MediaFailed += (_, _) => { _mediaHasVideo = false; };
         if (_settings.RememberPlaybackPosition &&
             _settings.PlaybackPositions.TryGetValue(info.DisplayPath, out double pos))
             _media.Position = TimeSpan.FromSeconds(pos);
         return _media;
+    }
+
+    // 動画の実解像度（NaturalVideoWidth/Height）に基づき、_mediaHost・MediaElement・
+    // 関連行の幅を再計算する。MediaOpenedは非同期なので初期表示時はContentWidth/Heightの
+    // 仮サイズで開始し、判明時点でこのメソッドにより余白なしの実サイズへ更新する。
+    private void ResizeVideoToNaturalAspect()
+    {
+        if (_media == null) return;
+        int vw = _media.NaturalVideoWidth, vh = _media.NaturalVideoHeight;
+        if (vw <= 0 || vh <= 0) return;
+
+        double scale = Math.Min(Math.Min(ContentWidth / vw, ContentHeight / vh), 1.0);
+        double dispW = Math.Max(Math.Floor(vw * scale), MinContentSide);
+        double dispH = Math.Max(Math.Floor(vh * scale), MinContentSide);
+
+        _media.Width  = dispW;
+        _media.Height = dispH;
+        // ナビゲーション等で既に別のメディアに差し替わっている場合は反映しない
+        if (_mediaHost.Content != _media) return;
+        SetContentSize(dispW, dispH);
+
+        // ウィンドウは SizeToContent のため、再レイアウト後に作業領域内へクランプし直す
+        UpdateLayout();
+        ClampToWorkArea(Left, Top);
     }
 
     private UIElement? BuildAudio(Services.PreviewInfo info)

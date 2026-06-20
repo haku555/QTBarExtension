@@ -85,16 +85,16 @@ public class PreviewSettings
 
     // ── プレビューウィンドウサイズ ────────────────────────
     /// <summary>画像プレビューの最大幅 (px)</summary>
-    public int ImageMaxWidth { get; set; } = 512;
+    public int ImageMaxWidth { get; set; } = 640;
 
     /// <summary>画像プレビューの最大高さ (px)</summary>
-    public int ImageMaxHeight { get; set; } = 256;
+    public int ImageMaxHeight { get; set; } = 384;
 
     /// <summary>動画プレビューの最大幅 (px)</summary>
-    public int VideoMaxWidth { get; set; } = 512;
+    public int VideoMaxWidth { get; set; } = 640;
 
     /// <summary>動画プレビューの最大高さ (px)</summary>
-    public int VideoMaxHeight { get; set; } = 256;
+    public int VideoMaxHeight { get; set; } = 384;
 
     /// <summary>テキストプレビューの最大幅 (px)</summary>
     public int TextMaxWidth { get; set; } = 256;
