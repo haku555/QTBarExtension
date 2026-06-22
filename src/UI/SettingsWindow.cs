@@ -651,6 +651,17 @@ public class SettingsWindow : Window
         inactive.Unchecked += (_, _) => { p.ShowWhenInactive = false; _save(); };
         panel.Children.Add(inactive);
 
+        // 画像プレビュー表示中: ポップアップ上にマウスが来たら解除して下のファイルを再検出
+        var hideOnHover = new CheckBox
+        {
+            Content = "画像プレビュー表示中、ウィンドウ上にマウスが乗ったら解除し、その下のファイルをプレビューする",
+            IsChecked = p.HidePreviewOnHover,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        hideOnHover.Checked   += (_, _) => { p.HidePreviewOnHover = true;  _save(); };
+        hideOnHover.Unchecked += (_, _) => { p.HidePreviewOnHover = false; _save(); };
+        panel.Children.Add(hideOnHover);
+
         // ネットワークファイル
         var network = new CheckBox
         {

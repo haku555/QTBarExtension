@@ -27,6 +27,13 @@ public class PreviewSettings
     /// <summary>非アクティブウィンドウでもプレビューを表示するか</summary>
     public bool ShowWhenInactive { get; set; } = true;
 
+    /// <summary>
+    /// 画像プレビュー表示中にプレビューウィンドウ上にマウスが乗ったときにプレビューを解除し、
+    /// その下にある別のファイルがあればプレビューし直すか（デフォルト: 有効）。
+    /// 動画・フォルダ・圧縮フォルダのプレビューには影響しない。
+    /// </summary>
+    public bool HidePreviewOnHover { get; set; } = true;
+
     /// <summary>フォルダホバー時に中の最初のファイルをプレビューするか（通常フォルダ）</summary>
     public bool PreviewFolderContents { get; set; } = true;
 

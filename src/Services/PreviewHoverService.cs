@@ -43,6 +43,8 @@ public class PreviewHoverService : IDisposable
     // ── ロード状態管理 ──────────────────────────────────────────────
     private int _loadSerial;
     private string? _currentLoadPath; // 現在ロード中or表示中のパス
+    private bool _currentIsImage;     // 現在表示中が画像プレビューかどうか
+    private bool _currentIsFolderPreview; // フォルダ/圧縮フォルダのプレビューとして開始されたか
     private CancellationTokenSource? _loadCts;
     private PreviewPopupWindow? _popup;
 
@@ -174,9 +176,18 @@ public class PreviewHoverService : IDisposable
                           ptY >= _currentItemBounds.Top    - LeaveMargin &&
                           ptY <= _currentItemBounds.Bottom + LeaveMargin;
 
-            // ポップアップ上にいるときは消さない
             var popupPt = new NativeMethods.POINT { X = ptX, Y = ptY };
-            if (!inside && !IsPointInsidePopup(popupPt))
+            bool onPopup = IsPointInsidePopup(popupPt);
+
+            if (!inside && !onPopup)
+            {
+                HidePopupImmediate();
+                return;
+            }
+
+            // HidePreviewOnHover 有効 かつ 画像プレビュー表示中（フォルダ/圧縮フォルダ由来は除外）のみ:
+            // ポップアップ上にマウスが来たらポップアップを閉じ、その下のアイテムを再検出する。
+            if (onPopup && _currentIsImage && !_currentIsFolderPreview && _settings.Preview.HidePreviewOnHover)
             {
                 HidePopupImmediate();
                 return;
@@ -200,7 +211,7 @@ public class PreviewHoverService : IDisposable
 
         var pt = new NativeMethods.POINT { X = ptX, Y = ptY };
 
-        // ポップアップ上ならスキップ
+        // ポップアップ上ならスキップ（HidePreviewOnHover=false の場合のみここに到達）
         if (IsPointInsidePopup(pt)) return;
 
         // 非アクティブ抑制
@@ -340,6 +351,7 @@ public class PreviewHoverService : IDisposable
     private void ShowFolderPreview(string folderPath, NativeMethods.POINT anchor)
     {
         _currentLoadPath = folderPath; // 同フォルダ上でカーソルが動いても再ロードしない
+        _currentIsFolderPreview = true;
 
         var items = _provider.GetFolderPreviewItems(folderPath);
         if (items.Count == 0) return;
@@ -349,6 +361,7 @@ public class PreviewHoverService : IDisposable
     private void ShowArchivePreview(string archivePath, NativeMethods.POINT anchor)
     {
         _currentLoadPath = archivePath; // 同アーカイブ上でカーソルが動いても再ロードしない
+        _currentIsFolderPreview = true;
 
         var items = _provider.GetArchivePreviewItems(archivePath);
         if (items.Count == 0) return;
@@ -372,6 +385,9 @@ public class PreviewHoverService : IDisposable
 
         var kind    = _provider.GetKind(path);
         bool isImage = kind == PreviewKind.Image;
+        _currentIsImage = isImage;
+        // フォルダ/アーカイブ由来でない直接ファイルホバーの場合はフラグをリセット
+        if (!isNavigation) _currentIsFolderPreview = false;
 
         // 画像以外はLoading表示
         if (!isImage)
@@ -442,8 +458,10 @@ public class PreviewHoverService : IDisposable
         _loadCts = null;
         _loadSerial++;
 
-        _currentLoadPath    = null;
-        _currentItemBounds  = System.Windows.Rect.Empty;
+        _currentLoadPath      = null;
+        _currentIsImage       = false;
+        _currentIsFolderPreview = false;
+        _currentItemBounds    = System.Windows.Rect.Empty;
         _currentFolderItems = null;
 
         // UIAキャッシュ無効化
