@@ -662,6 +662,28 @@ public class SettingsWindow : Window
         hideOnHover.Unchecked += (_, _) => { p.HidePreviewOnHover = false; _save(); };
         panel.Children.Add(hideOnHover);
 
+        // テキストファイルのプレビュー表示
+        var previewText = new CheckBox
+        {
+            Content = "テキストファイル（.txt / .log / .cs など）のプレビューを表示する",
+            IsChecked = p.PreviewTextFiles,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        previewText.Checked   += (_, _) => { p.PreviewTextFiles = true;  _save(); };
+        previewText.Unchecked += (_, _) => { p.PreviewTextFiles = false; _save(); };
+        panel.Children.Add(previewText);
+
+        // テキストプレビュー表示中: ポップアップ上にマウスが来たら解除して下のファイルを再検出
+        var hideTextOnHover = new CheckBox
+        {
+            Content = "テキストプレビュー表示中、ウィンドウ上にマウスが乗ったら解除し、その下のファイルをプレビューする",
+            IsChecked = p.HideTextPreviewOnHover,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        hideTextOnHover.Checked   += (_, _) => { p.HideTextPreviewOnHover = true;  _save(); };
+        hideTextOnHover.Unchecked += (_, _) => { p.HideTextPreviewOnHover = false; _save(); };
+        panel.Children.Add(hideTextOnHover);
+
         // デスクトップアイコンのプレビュー
         var desktopIcons = new CheckBox
         {

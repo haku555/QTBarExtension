@@ -124,6 +124,16 @@ public class PreviewSettings
         ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".tbz2", ".xz", ".lzh", ".lza"
     ];
 
+    // ── テキストプレビュー ────────────────────────────────
+    /// <summary>テキストファイルのプレビューを表示するか（デフォルト: 有効）</summary>
+    public bool PreviewTextFiles { get; set; } = true;
+
+    /// <summary>
+    /// テキストプレビュー表示中にプレビューウィンドウ上にマウスが乗ったときにプレビューを解除し、
+    /// その下にある別のファイルがあればプレビューし直すか（デフォルト: 無効）。
+    /// </summary>
+    public bool HideTextPreviewOnHover { get; set; } = false;
+
     // ── デスクトップアイコンのプレビュー ─────────────────
     /// <summary>デスクトップアイコン上でもプレビューを有効にするか（デフォルト: 有効）</summary>
     public bool PreviewDesktopIcons { get; set; } = true;

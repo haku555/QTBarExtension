@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using QTBarExtension.Core;
@@ -15,10 +16,19 @@ namespace QTBarExtension.UI;
 
 public class PreviewPopupWindow : Window
 {
+    // WM_MOUSEACTIVATE 関連定数
+    private const int WM_MOUSEACTIVATE = 0x0021;
+    private const IntPtr MA_NOACTIVATE = (nint)3;
+
+    // Win32フォーカス操作（WS_EX_NOACTIVATE環境でのTextBox選択に必要）
+    [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr hWnd);
+
     private readonly PreviewSettings _settings;
     private readonly ContentControl _mediaHost;
     private readonly TextBlock _infoText;
     private MediaElement? _media;
+    private TextBox? _textBox;  // テキストプレビュー用TextBox参照
+    private IntPtr _popupHwnd;  // このウィンドウのHWND（SetFocus用）
 
     private readonly DispatcherTimer _posTimer;
     private TextBlock? _timeLabel;
@@ -179,10 +189,41 @@ public class PreviewPopupWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         ApplyTheme();
-        var hwnd    = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-        int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-        SetWindowLong(hwnd, GWL_EXSTYLE,
+        _popupHwnd = new WindowInteropHelper(this).Handle;
+        int exStyle = GetWindowLong(_popupHwnd, GWL_EXSTYLE);
+        SetWindowLong(_popupHwnd, GWL_EXSTYLE,
             exStyle | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+
+        // WM_MOUSEACTIVATE に MA_NOACTIVATE を返す → マウスイベントを受け取りつつ
+        // Explorerウィンドウのアクティブ状態を奪わない。
+        HwndSource.FromHwnd(_popupHwnd)?.AddHook(WndProc);
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_LBUTTONDOWN = 0x0201;
+
+        if (msg == WM_MOUSEACTIVATE)
+        {
+            handled = true;
+            return MA_NOACTIVATE;
+        }
+
+        // テキストプレビュー表示中にクリックされたとき：
+        // WndProcはUIスレッドで動くため AttachThreadInput は不要。
+        // SetFocus(hwnd) を同一スレッドから直接呼ぶことで Explorerスレッドに
+        // 一切干渉せずにWin32フォーカスをこのウィンドウへ移せる。
+        if (msg == WM_LBUTTONDOWN && _textBox != null)
+        {
+            try
+            {
+                SetFocus(hwnd);
+                Dispatcher.BeginInvoke(() => _textBox?.Focus(), DispatcherPriority.Input);
+            }
+            catch { }
+        }
+
+        return IntPtr.Zero;
     }
 
     private UIElement BuildControlRow()
@@ -642,17 +683,37 @@ public class PreviewPopupWindow : Window
     private UIElement BuildText(Services.PreviewInfo info)
     {
         _mediaHasVideo = false;
-        return new TextBox
+        double tw = _settings.TextMaxWidth;
+        double th = _settings.TextMaxHeight;
+        SetContentSize(tw, th);
+
+        var tb = new TextBox
         {
-            Text = info.TextContent, IsReadOnly = true, TextWrapping = TextWrapping.NoWrap,
-            FontFamily = new FontFamily(_settings.TextFontFamily), FontSize = _settings.TextFontSize,
+            Text = info.TextContent,
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.NoWrap,
+            FontFamily = new FontFamily(_settings.TextFontFamily),
+            FontSize = _settings.TextFontSize,
             Foreground = new SolidColorBrush(TextFgColor),
             Background = new SolidColorBrush(TextBgColor),
             BorderThickness = new Thickness(0),
-            Width = _settings.TextMaxWidth, Height = _settings.TextMaxHeight,
+            Width = tw,
+            Height = th,
             VerticalScrollBarVisibility   = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            IsHitTestVisible = true,
+            Focusable = true,
+            Cursor = Cursors.IBeam,
+            // キャレットを非表示にしてビューアらしい見た目に
+            CaretBrush = Brushes.Transparent,
         };
+
+        // WndProc の WM_LBUTTONDOWN で Win32 SetFocus + WPF Focus() を行うため、
+        // ここでは e.Handled を false のまま TextBox 内部のヒットテストに委ねる。
+        tb.PreviewMouseDown += (_, _) => { /* WndProc側で処理 */ };
+
+        _textBox = tb;
+        return tb;
     }
 
     private UIElement MakeErrorBox(string msg)
@@ -778,6 +839,7 @@ public class PreviewPopupWindow : Window
     {
         StopMedia();
         _mediaHost.Content = null;
+        _textBox = null;
         _infoText.Text = "";
         _folderItems = null;
         if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;

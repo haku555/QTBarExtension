@@ -44,6 +44,7 @@ public class PreviewHoverService : IDisposable
     private int _loadSerial;
     private string? _currentLoadPath; // 現在ロード中or表示中のパス
     private bool _currentIsImage;     // 現在表示中が画像プレビューかどうか
+    private bool _currentIsText;      // 現在表示中がテキストプレビューかどうか
     private bool _currentIsFolderPreview; // フォルダ/圧縮フォルダのプレビューとして開始されたか
     private CancellationTokenSource? _loadCts;
     private PreviewPopupWindow? _popup;
@@ -188,6 +189,14 @@ public class PreviewHoverService : IDisposable
             // HidePreviewOnHover 有効 かつ 画像プレビュー表示中（フォルダ/圧縮フォルダ由来は除外）のみ:
             // ポップアップ上にマウスが来たらポップアップを閉じ、その下のアイテムを再検出する。
             if (onPopup && _currentIsImage && !_currentIsFolderPreview && _settings.Preview.HidePreviewOnHover)
+            {
+                HidePopupImmediate();
+                return;
+            }
+
+            // HideTextPreviewOnHover 有効 かつ テキストプレビュー表示中:
+            // ポップアップ上にマウスが来たらポップアップを閉じ、その下のアイテムを再検出する。
+            if (onPopup && _currentIsText && !_currentIsFolderPreview && _settings.Preview.HideTextPreviewOnHover)
             {
                 HidePopupImmediate();
                 return;
@@ -391,9 +400,14 @@ public class PreviewHoverService : IDisposable
 
         var kind    = _provider.GetKind(path);
         bool isImage = kind == PreviewKind.Image;
+        bool isText  = kind == PreviewKind.Text;
         _currentIsImage = isImage;
+        _currentIsText  = isText;
         // フォルダ/アーカイブ由来でない直接ファイルホバーの場合はフラグをリセット
         if (!isNavigation) _currentIsFolderPreview = false;
+
+        // テキストプレビュー無効の場合はスキップ
+        if (isText && !_settings.Preview.PreviewTextFiles) return;
 
         // 画像以外はLoading表示
         if (!isImage)
@@ -466,6 +480,7 @@ public class PreviewHoverService : IDisposable
 
         _currentLoadPath      = null;
         _currentIsImage       = false;
+        _currentIsText        = false;
         _currentIsFolderPreview = false;
         _currentItemBounds    = System.Windows.Rect.Empty;
         _currentFolderItems = null;
