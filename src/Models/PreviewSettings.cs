@@ -134,6 +134,12 @@ public class PreviewSettings
     /// </summary>
     public bool HideTextPreviewOnHover { get; set; } = false;
 
+    /// <summary>
+    /// アニメーションWebPプレビュー表示中にプレビューウィンドウ上にマウスが乗ったときにプレビューを解除するか。
+    /// アニメーション再生中に意図せず閉じないよう、デフォルトは無効。
+    /// </summary>
+    public bool HideAnimatedWebpOnHover { get; set; } = false;
+
     // ── デスクトップアイコンのプレビュー ─────────────────
     /// <summary>デスクトップアイコン上でもプレビューを有効にするか（デフォルト: 有効）</summary>
     public bool PreviewDesktopIcons { get; set; } = true;

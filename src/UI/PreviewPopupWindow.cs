@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using QTBarExtension.Core;
 using QTBarExtension.Models;
@@ -43,6 +44,14 @@ public class PreviewPopupWindow : Window
     private List<string>? _folderItems;
     private int _folderIndex;
     private Grid? _controlPanel;
+
+    // アニメーションWebP再生用
+    private DispatcherTimer? _animTimer;
+    private System.Windows.Controls.Image? _animImage;
+    private BitmapFrame[]? _animFrames;
+    private int[] _animDelaysMs = [];
+    private int _animFrameIndex;
+    private bool _animPlaying;
 
     // ルートBorderへの参照（テーマ再適用用）
     private readonly Border _rootBorder;
@@ -262,14 +271,26 @@ public class PreviewPopupWindow : Window
         _seekBar.PreviewMouseUp   += (_, _) =>
         {
             _seekDragging = false;
-            if (_media != null && _media.NaturalDuration.HasTimeSpan)
+            if (_animFrames != null)
+            {
+                _animFrameIndex = (int)Math.Round(_seekBar.Value);
+                if (_animImage != null) _animImage.Source = _animFrames[_animFrameIndex];
+                if (_timeLabel != null) _timeLabel.Text = $"{_animFrameIndex + 1} / {_animFrames.Length}";
+            }
+            else if (_media != null && _media.NaturalDuration.HasTimeSpan)
                 _media.Position = TimeSpan.FromSeconds(
                     _seekBar.Value * _media.NaturalDuration.TimeSpan.TotalSeconds);
         };
         _seekBar.ValueChanged += (_, _) =>
         {
             if (!_seekDragging) return;
-            if (_media != null && _media.NaturalDuration.HasTimeSpan)
+            if (_animFrames != null)
+            {
+                int fi = (int)Math.Round(_seekBar.Value);
+                if (_animImage != null && fi < _animFrames.Length) _animImage.Source = _animFrames[fi];
+                if (_timeLabel != null) _timeLabel.Text = $"{fi + 1} / {_animFrames.Length}";
+            }
+            else if (_media != null && _media.NaturalDuration.HasTimeSpan)
                 _media.Position = TimeSpan.FromSeconds(
                     _seekBar.Value * _media.NaturalDuration.TimeSpan.TotalSeconds);
         };
@@ -429,7 +450,7 @@ public class PreviewPopupWindow : Window
         _infoText.Text = BuildInfoText(info);
 
         if (_controlPanel != null)
-            _controlPanel.Visibility = (_media != null && _mediaHasVideo)
+            _controlPanel.Visibility = ((_media != null || _animTimer != null) && _mediaHasVideo)
                 ? Visibility.Visible : Visibility.Collapsed;
 
         PlaceContent(content, screenX, screenY);
@@ -442,6 +463,16 @@ public class PreviewPopupWindow : Window
                 _isPlaying = true;
                 if (_playBtn != null) _playBtn.Content = "❙❙";
                 _posTimer.Start();
+            }, DispatcherPriority.Loaded);
+        }
+        else if (_animTimer != null)
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                _animPlaying = true;
+                _animTimer?.Start();
+                _isPlaying = true;
+                if (_playBtn != null) _playBtn.Content = "❙❙";
             }, DispatcherPriority.Loaded);
         }
     }
@@ -510,6 +541,22 @@ public class PreviewPopupWindow : Window
 
     private void OnPlayBtnClick(object sender, RoutedEventArgs e)
     {
+        // アニメーションWebP
+        if (_animTimer != null)
+        {
+            if (_animPlaying)
+            {
+                _animTimer.Stop(); _animPlaying = false; _isPlaying = false;
+                if (_playBtn != null) _playBtn.Content = "▶";
+            }
+            else
+            {
+                _animPlaying = true; _isPlaying = true;
+                _animTimer.Start();
+                if (_playBtn != null) _playBtn.Content = "❙❙";
+            }
+            return;
+        }
         if (_media == null) return;
         if (_isPlaying)
         {
@@ -582,6 +629,14 @@ public class PreviewPopupWindow : Window
     private UIElement? BuildVideo(Services.PreviewInfo info)
     {
         if (string.IsNullOrEmpty(info.TempMediaPath)) { _mediaHasVideo = false; return null; }
+
+        // アニメーションWebPはMediaElementで再生不可 → フレーム切り替えアニメーション
+        if (info.IsAnimatedWebp)
+            return BuildAnimatedWebp(info);
+
+        // 通常動画: シークバーを0-1比率モードに戻す
+        if (_seekBar != null) { _seekBar.Minimum = 0; _seekBar.Maximum = 1; _seekBar.Value = 0; }
+
         _mediaHasVideo = true;
         _media = new MediaElement
         {
@@ -607,7 +662,13 @@ public class PreviewPopupWindow : Window
             // 実解像度が判明した時点でアスペクト比に合わせてリサイズ（余白を排除）
             ResizeVideoToNaturalAspect();
         };
-        _media.MediaFailed += (_, _) => { _mediaHasVideo = false; };
+        _media.MediaFailed += (_, e) =>
+        {
+            _mediaHasVideo = false;
+            string ext = System.IO.Path.GetExtension(info.TempMediaPath ?? "").ToUpperInvariant();
+            string msg = $"{ext} を再生できません\nコーデックがインストールされていない可能性があります";
+            _mediaHost.Content = MakeErrorBox(msg);
+        };
         if (_settings.RememberPlaybackPosition &&
             _settings.PlaybackPositions.TryGetValue(info.DisplayPath, out double pos))
             _media.Position = TimeSpan.FromSeconds(pos);
@@ -636,6 +697,128 @@ public class PreviewPopupWindow : Window
         // ウィンドウは SizeToContent のため、再レイアウト後に作業領域内へクランプし直す
         UpdateLayout();
         ClampToWorkArea(Left, Top);
+    }
+
+    // ── アニメーションWebP再生 ───────────────────────────────────────
+    private UIElement? BuildAnimatedWebp(Services.PreviewInfo info)
+    {
+        _mediaHasVideo = false;
+        StopAnimWebp();
+
+        BitmapFrame[]? frames = null;
+        int[]? delays = null;
+        int frameW = 0, frameH = 0;
+
+        try
+        {
+            byte[] webpBytes = System.IO.File.ReadAllBytes(info.TempMediaPath!);
+            using var ms = new System.IO.MemoryStream(webpBytes);
+            var decoder = BitmapDecoder.Create(ms,
+                BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count == 0) return MakeErrorBox("フレームを読み込めませんでした");
+
+            frames = new BitmapFrame[decoder.Frames.Count];
+            delays = new int[decoder.Frames.Count];
+            for (int i = 0; i < decoder.Frames.Count; i++)
+            {
+                var f = decoder.Frames[i];
+                f.Freeze();
+                frames[i] = f;
+                // フレーム遅延はメタデータから取得（WebPはミリ秒単位）
+                // BitmapFrame.Metadataが取れない場合は100ms（10fps相当）をデフォルトに
+                int delayMs = 100;
+                try
+                {
+                    if (f.Metadata is BitmapMetadata meta)
+                    {
+                        // WebPメタデータのパスはデコーダ依存
+                        // GIFと同様 /grctlext/Delay を試みる（単位:10ms）
+                        object? delayObj = null;
+                        try { delayObj = meta.GetQuery("/grctlext/Delay"); } catch { }
+                        if (delayObj is ushort gifDelay && gifDelay > 0)
+                            delayMs = gifDelay * 10;
+                    }
+                }
+                catch { }
+                delays[i] = Math.Max(delayMs, 20); // 最低20ms
+                if (i == 0) { frameW = f.PixelWidth; frameH = f.PixelHeight; }
+            }
+        }
+        catch { return MakeErrorBox("アニメーションWebPを読み込めませんでした"); }
+
+        if (frames == null || frames.Length == 0 || delays == null)
+            return MakeErrorBox("フレームがありません");
+
+        double scale = Math.Min(Math.Min(ContentWidth / frameW, ContentHeight / frameH), 1.0);
+        double dispW = Math.Max(Math.Floor(frameW * scale), MinContentSide);
+        double dispH = Math.Max(Math.Floor(frameH * scale), MinContentSide);
+
+        _animImage = new System.Windows.Controls.Image
+        {
+            Source = frames[0],
+            Width = dispW, Height = dispH,
+            Stretch = Stretch.Fill,
+        };
+        RenderOptions.SetBitmapScalingMode(_animImage, BitmapScalingMode.HighQuality);
+
+        var grid = new Grid
+        {
+            Width = dispW, Height = dispH,
+            Background = new SolidColorBrush(ImageBgColor),
+        };
+        grid.Children.Add(_animImage);
+        SetContentSize(dispW, dispH);
+
+        // 情報更新
+        info.Dimensions = $"{frameW} x {frameH}";
+        double totalMs = 0; foreach (var d in delays) totalMs += d;
+        info.Duration = TimeSpan.FromMilliseconds(totalMs);
+        _infoText.Text = BuildInfoText(info);
+
+        // シークバーをフレーム数でセットアップ（コントロールパネルを動画UIと共用）
+        _mediaHasVideo = true; // コントロールパネル表示フラグ
+        if (_seekBar != null)
+        {
+            _seekBar.Minimum = 0;
+            _seekBar.Maximum = Math.Max(1, frames.Length - 1);
+            _seekBar.Value = 0;
+        }
+        if (_timeLabel != null)
+            _timeLabel.Text = $"1 / {frames.Length}";
+
+        // アニメーション状態を設定してタイマー開始
+        _animFrames = frames;
+        _animDelaysMs = delays;
+        _animFrameIndex = 0;
+        _animPlaying = false; // ShowPreviewからPlay()される
+
+        _animTimer = new DispatcherTimer(DispatcherPriority.Render);
+        _animTimer.Interval = TimeSpan.FromMilliseconds(delays[0]);
+        _animTimer.Tick += OnAnimTick;
+
+        return grid;
+    }
+
+    private void OnAnimTick(object? sender, EventArgs e)
+    {
+        if (_animFrames == null || _animImage == null || !_animPlaying) return;
+        _animFrameIndex = (_animFrameIndex + 1) % _animFrames.Length;
+        _animImage.Source = _animFrames[_animFrameIndex];
+        if (_seekBar != null && !_seekDragging) _seekBar.Value = _animFrameIndex;
+        if (_timeLabel != null) _timeLabel.Text = $"{_animFrameIndex + 1} / {_animFrames.Length}";
+        // 次フレームの遅延を設定
+        _animTimer!.Interval = TimeSpan.FromMilliseconds(_animDelaysMs[_animFrameIndex]);
+    }
+
+    private void StopAnimWebp()
+    {
+        _animTimer?.Stop();
+        _animTimer = null;
+        _animFrames = null;
+        _animDelaysMs = [];
+        _animFrameIndex = 0;
+        _animPlaying = false;
+        _animImage = null;
     }
 
     private UIElement? BuildAudio(Services.PreviewInfo info)
@@ -833,6 +1016,7 @@ public class PreviewPopupWindow : Window
             if (_media != null) { _media.Stop(); _media.Source = null; _media = null; }
         }
         catch { }
+        StopAnimWebp();
     }
 
     public new void Hide()

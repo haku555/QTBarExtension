@@ -45,6 +45,7 @@ public class PreviewHoverService : IDisposable
     private string? _currentLoadPath; // 現在ロード中or表示中のパス
     private bool _currentIsImage;     // 現在表示中が画像プレビューかどうか
     private bool _currentIsText;      // 現在表示中がテキストプレビューかどうか
+    private bool _currentIsAnimatedWebp; // 現在表示中がアニメーションWebPかどうか
     private bool _currentIsFolderPreview; // フォルダ/圧縮フォルダのプレビューとして開始されたか
     private CancellationTokenSource? _loadCts;
     private PreviewPopupWindow? _popup;
@@ -188,7 +189,14 @@ public class PreviewHoverService : IDisposable
 
             // HidePreviewOnHover 有効 かつ 画像プレビュー表示中（フォルダ/圧縮フォルダ由来は除外）のみ:
             // ポップアップ上にマウスが来たらポップアップを閉じ、その下のアイテムを再検出する。
-            if (onPopup && _currentIsImage && !_currentIsFolderPreview && _settings.Preview.HidePreviewOnHover)
+            if (onPopup && _currentIsImage && !_currentIsAnimatedWebp && !_currentIsFolderPreview && _settings.Preview.HidePreviewOnHover)
+            {
+                HidePopupImmediate();
+                return;
+            }
+
+            // HideAnimatedWebpOnHover 有効 かつ アニメーションWebPプレビュー表示中:
+            if (onPopup && _currentIsAnimatedWebp && !_currentIsFolderPreview && _settings.Preview.HideAnimatedWebpOnHover)
             {
                 HidePopupImmediate();
                 return;
@@ -403,6 +411,7 @@ public class PreviewHoverService : IDisposable
         bool isText  = kind == PreviewKind.Text;
         _currentIsImage = isImage;
         _currentIsText  = isText;
+        _currentIsAnimatedWebp = false; // Load()完了後に更新される
         // フォルダ/アーカイブ由来でない直接ファイルホバーの場合はフラグをリセット
         if (!isNavigation) _currentIsFolderPreview = false;
 
@@ -435,6 +444,7 @@ public class PreviewHoverService : IDisposable
 
                 EnsurePopup();
                 _popup!.ShowPreview(info, placeAt.X, placeAt.Y);
+                _currentIsAnimatedWebp = info.IsAnimatedWebp;
                 _currentFolderItems = folderItems;
                 _currentFolderIndex = folderIndex;
             });
@@ -481,6 +491,7 @@ public class PreviewHoverService : IDisposable
         _currentLoadPath      = null;
         _currentIsImage       = false;
         _currentIsText        = false;
+        _currentIsAnimatedWebp = false;
         _currentIsFolderPreview = false;
         _currentItemBounds    = System.Windows.Rect.Empty;
         _currentFolderItems = null;

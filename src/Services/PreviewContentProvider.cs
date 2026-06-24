@@ -29,6 +29,7 @@ public class PreviewInfo
     public bool IsArchiveEntry { get; set; }
     public bool IsNetworkPath { get; set; }
     public bool IsFolderItem { get; set; }           // フォルダ/zip内ナビゲーション由来
+    public bool IsAnimatedWebp { get; set; }         // アニメーションWebP（動画UIで表示）
 
     // ── フォルダ内ナビゲーション用 ──────────────────────────
     /// <summary>同フォルダ/zip内でプレビュー可能なファイルパスの一覧（null=ナビ不要）</summary>
@@ -277,9 +278,20 @@ public class PreviewContentProvider
                 switch (kind)
                 {
                     case PreviewKind.Image:
-                        info.Image = LoadImage(path, path);
-                        if (info.Image != null)
-                            info.Dimensions = $"{info.Image.PixelWidth} x {info.Image.PixelHeight}";
+                        // アニメーションWebP判定: ANIMチャンクがあれば動画UIで表示
+                        if (Path.GetExtension(path).Equals(".webp", StringComparison.OrdinalIgnoreCase)
+                            && IsAnimatedWebpFile(path))
+                        {
+                            info.Kind = PreviewKind.Video;
+                            info.IsAnimatedWebp = true;
+                            info.TempMediaPath = path;
+                        }
+                        else
+                        {
+                            info.Image = LoadImage(path, path);
+                            if (info.Image != null)
+                                info.Dimensions = $"{info.Image.PixelWidth} x {info.Image.PixelHeight}";
+                        }
                         break;
                     case PreviewKind.Text:
                         info.TextContent = LoadTextHead(path);
@@ -562,5 +574,43 @@ public class PreviewContentProvider
             i += extra + 1;
         }
         return true;
+    }
+
+    // ── アニメーションWebP判定 ────────────────────────────
+    /// <summary>
+    /// WebPファイルにANIMチャンクが含まれているかチェックする。
+    /// WebPフォーマット: RIFF????WEBP の後にチャンクが続く。
+    /// ANIMチャンクが存在すればアニメーション。
+    /// </summary>
+    private static bool IsAnimatedWebpFile(string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            // 最低でも12バイト（RIFFヘッダ）必要
+            if (fs.Length < 12) return false;
+            var header = new byte[12];
+            if (fs.Read(header, 0, 12) < 12) return false;
+            // RIFF????WEBP チェック
+            if (header[0] != 'R' || header[1] != 'I' || header[2] != 'F' || header[3] != 'F') return false;
+            if (header[8] != 'W' || header[9] != 'E' || header[10] != 'B' || header[11] != 'P') return false;
+
+            // チャンクをスキャンして ANIM を探す（先頭から最大64KBまで）
+            long scanLimit = Math.Min(fs.Length, 65536);
+            var chunkHeader = new byte[8];
+            while (fs.Position + 8 <= scanLimit)
+            {
+                if (fs.Read(chunkHeader, 0, 8) < 8) break;
+                string chunkId = System.Text.Encoding.ASCII.GetString(chunkHeader, 0, 4);
+                uint chunkSize = (uint)(chunkHeader[4] | chunkHeader[5] << 8 |
+                                        chunkHeader[6] << 16 | chunkHeader[7] << 24);
+                if (chunkId == "ANIM") return true;
+                // 奇数サイズのチャンクはパディングバイトあり
+                long skip = chunkSize + (chunkSize % 2);
+                fs.Seek(skip, SeekOrigin.Current);
+            }
+            return false;
+        }
+        catch { return false; }
     }
 }

@@ -684,6 +684,17 @@ public class SettingsWindow : Window
         hideTextOnHover.Unchecked += (_, _) => { p.HideTextPreviewOnHover = false; _save(); };
         panel.Children.Add(hideTextOnHover);
 
+        // アニメーションWebPプレビュー表示中: ポップアップ上にマウスが来たら解除
+        var hideAnimWebpOnHover = new CheckBox
+        {
+            Content = "アニメーションWebPプレビュー表示中、ウィンドウ上にマウスが乗ったら解除する（デフォルト: OFF）",
+            IsChecked = p.HideAnimatedWebpOnHover,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        hideAnimWebpOnHover.Checked   += (_, _) => { p.HideAnimatedWebpOnHover = true;  _save(); };
+        hideAnimWebpOnHover.Unchecked += (_, _) => { p.HideAnimatedWebpOnHover = false; _save(); };
+        panel.Children.Add(hideAnimWebpOnHover);
+
         // デスクトップアイコンのプレビュー
         var desktopIcons = new CheckBox
         {
