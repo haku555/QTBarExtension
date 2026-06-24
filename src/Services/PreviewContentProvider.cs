@@ -20,6 +20,7 @@ public class PreviewInfo
     public string FileName { get; set; } = "";
     public long SizeBytes { get; set; }
     public DateTime? Modified { get; set; }
+    public DateTime? Created { get; set; }
     public string Dimensions { get; set; } = "";   // 画像/動画用
     public TimeSpan? Duration { get; set; }          // 動画/音声用
     public string TextContent { get; set; } = "";   // テキスト用
@@ -271,6 +272,7 @@ public class PreviewContentProvider
                 var fi = new FileInfo(path);
                 info.SizeBytes = fi.Length;
                 info.Modified = fi.LastWriteTime;
+                info.Created = fi.CreationTime;
 
                 switch (kind)
                 {

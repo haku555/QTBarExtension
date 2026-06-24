@@ -225,6 +225,12 @@ public class PreviewHoverService : IDisposable
         IntPtr cabinet = FindCabinetAtPoint(pt);
         if (cabinet == IntPtr.Zero) return;
 
+        // デスクトップアイコン（Progman/WorkerW）の場合、設定で無効なら何もしない
+        {
+            string cls = GetClassNameStr(cabinet);
+            if ((cls == "Progman" || cls == "WorkerW") && !_settings.Preview.PreviewDesktopIcons) return;
+        }
+
         // フォルダが変わった → UIAキャッシュをクリア
         string? newFolderPath = GetFolderPathForCabinet(cabinet);
         if (string.IsNullOrEmpty(newFolderPath)) return;
@@ -549,7 +555,10 @@ public class PreviewHoverService : IDisposable
         var cur = hwnd;
         for (int i = 0; i < 12 && cur != IntPtr.Zero; i++)
         {
-            if (GetClassNameStr(cur) == "CabinetWClass") return cur;
+            string cls = GetClassNameStr(cur);
+            if (cls == "CabinetWClass") return cur;
+            // デスクトップアイコン（Progman / WorkerW）対応
+            if (cls == "Progman" || cls == "WorkerW") return cur;
             cur = NativeMethodsExtra.GetParent(cur);
         }
         return IntPtr.Zero;
@@ -557,6 +566,11 @@ public class PreviewHoverService : IDisposable
 
     private static string? GetFolderPathForCabinet(IntPtr cabinet)
     {
+        // デスクトップアイコン（Progman / WorkerW）の場合はデスクトップパスを返す
+        string cls = GetClassNameStr(cabinet);
+        if (cls == "Progman" || cls == "WorkerW")
+            return Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
         try
         {
             var shellType = Type.GetTypeFromProgID("Shell.Application");

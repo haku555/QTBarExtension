@@ -134,6 +134,7 @@ public class PreviewPopupWindow : Window
             Margin       = new Thickness(2, 4, 2, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth     = ContentWidth,
+            TextWrapping = System.Windows.TextWrapping.Wrap,
         };
         Grid.SetRow(_infoText, 3);
 
@@ -673,15 +674,54 @@ public class PreviewPopupWindow : Window
 
     private string BuildInfoText(Services.PreviewInfo info)
     {
-        var parts = new List<string> { info.FileName };
-        if (info.SizeBytes > 0) parts.Add(FormatSize(info.SizeBytes));
-        if (info.Modified.HasValue) parts.Add(info.Modified.Value.ToString("yyyy/MM/dd HH:mm"));
-        if (!string.IsNullOrEmpty(info.Dimensions)) parts.Add(info.Dimensions);
-        if (info.Duration.HasValue) parts.Add("🎬 " + FormatTime(info.Duration.Value.TotalSeconds));
-        if (info.IsArchiveEntry) parts.Add("📦 圧縮内");
-        if (info.IsFolderItem && !info.IsArchiveEntry) parts.Add("📁 フォルダ内");
-        if (info.IsNetworkPath) parts.Add("🌐 ネットワーク");
-        return string.Join("  |  ", parts);
+        var s = _settings;
+        var line1 = new List<string>();
+        var line2 = new List<string>();
+        var line3 = new List<string>();
+
+        // 1行目: ファイル名 + サイズ + 拡張子
+        line1.Add(info.FileName);
+        if (info.SizeBytes > 0)
+            line1.Add(s.ShowSizeWithTwoDecimals ? FormatSizePrecise(info.SizeBytes) : FormatSize(info.SizeBytes));
+        if (s.InfoShowExtension)
+        {
+            string ext = System.IO.Path.GetExtension(info.FileName).ToUpperInvariant();
+            if (!string.IsNullOrEmpty(ext)) line1.Add(ext);
+        }
+
+        // 2行目: 解像度 + 再生時間
+        if (s.InfoShowDimensions && !string.IsNullOrEmpty(info.Dimensions))
+            line2.Add("📐 " + info.Dimensions);
+        if (s.InfoShowDuration && info.Duration.HasValue)
+            line2.Add("🎬 " + FormatTime(info.Duration.Value.TotalSeconds));
+
+        // 3行目: 日時 + バッジ
+        if (s.InfoShowModifiedDate && info.Modified.HasValue)
+            line3.Add("📅 " + info.Modified.Value.ToString("yyyy/MM/dd HH:mm"));
+        if (s.InfoShowCreatedDate && info.Created.HasValue)
+            line3.Add("📁作成: " + info.Created.Value.ToString("yyyy/MM/dd HH:mm"));
+        if (s.InfoShowLocationBadge && info.IsArchiveEntry)
+            line3.Add("📦 圧縮内");
+        if (s.InfoShowLocationBadge && info.IsFolderItem && !info.IsArchiveEntry)
+            line3.Add("📁 フォルダ内");
+        if (s.InfoShowNetworkBadge && info.IsNetworkPath)
+            line3.Add("🌐 ネットワーク");
+
+        if (!s.InfoTextMultiLine)
+        {
+            // 1行モード: 全部まとめて " | " 区切り
+            var all = new List<string>(line1);
+            all.AddRange(line2);
+            all.AddRange(line3);
+            return string.Join("  |  ", all);
+        }
+
+        // 複数行モード
+        var lines = new List<string>();
+        if (line1.Count > 0) lines.Add(string.Join("  |  ", line1));
+        if (line2.Count > 0) lines.Add(string.Join("  |  ", line2));
+        if (line3.Count > 0) lines.Add(string.Join("  |  ", line3));
+        return string.Join("\n", lines);
     }
 
     private static string FormatSize(long bytes)
@@ -690,6 +730,15 @@ public class PreviewPopupWindow : Window
         double size = bytes; int u = 0;
         while (size >= 1024 && u < units.Length - 1) { size /= 1024; u++; }
         return $"{size:0.#} {units[u]}";
+    }
+
+    private static string FormatSizePrecise(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        double size = bytes; int u = 0;
+        while (size >= 1024 && u < units.Length - 1) { size /= 1024; u++; }
+        // B単位のときは小数不要
+        return u == 0 ? $"{size:0} {units[u]}" : $"{size:0.00} {units[u]}";
     }
 
     private static Color ParseColor(string hex, Color fallback)

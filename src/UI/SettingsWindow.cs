@@ -662,7 +662,118 @@ public class SettingsWindow : Window
         hideOnHover.Unchecked += (_, _) => { p.HidePreviewOnHover = false; _save(); };
         panel.Children.Add(hideOnHover);
 
-        // ネットワークファイル
+        // デスクトップアイコンのプレビュー
+        var desktopIcons = new CheckBox
+        {
+            Content = "デスクトップアイコン上でもプレビューを表示する",
+            IsChecked = p.PreviewDesktopIcons,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        desktopIcons.Checked   += (_, _) => { p.PreviewDesktopIcons = true;  _save(); };
+        desktopIcons.Unchecked += (_, _) => { p.PreviewDesktopIcons = false; _save(); };
+        panel.Children.Add(desktopIcons);
+
+        // 情報テキスト: 複数行表示
+        var multiLine = new CheckBox
+        {
+            Content = "情報テキストを複数行で表示する（ファイル名/解像度/日時を行分け）",
+            IsChecked = p.InfoTextMultiLine,
+            Margin = new Thickness(0, 8, 0, 4),
+        };
+        multiLine.Checked   += (_, _) => { p.InfoTextMultiLine = true;  _save(); };
+        multiLine.Unchecked += (_, _) => { p.InfoTextMultiLine = false; _save(); };
+        panel.Children.Add(multiLine);
+
+        // 情報テキスト: サイズ精度
+        var sizePrec = new CheckBox
+        {
+            Content = "ファイルサイズを小数第2位まで表示する（例: 1.23 MB）",
+            IsChecked = p.ShowSizeWithTwoDecimals,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+        sizePrec.Checked   += (_, _) => { p.ShowSizeWithTwoDecimals = true;  _save(); };
+        sizePrec.Unchecked += (_, _) => { p.ShowSizeWithTwoDecimals = false; _save(); };
+        panel.Children.Add(sizePrec);
+
+        // 情報テキスト: 表示項目セクションラベル
+        panel.Children.Add(new TextBlock
+        {
+            Text = "情報テキストに表示する項目:",
+            FontWeight = System.Windows.FontWeights.SemiBold,
+            Margin = new Thickness(0, 8, 0, 2),
+        });
+
+        var showModified = new CheckBox
+        {
+            Content = "更新日時",
+            IsChecked = p.InfoShowModifiedDate,
+            Margin = new Thickness(8, 0, 0, 2),
+        };
+        showModified.Checked   += (_, _) => { p.InfoShowModifiedDate = true;  _save(); };
+        showModified.Unchecked += (_, _) => { p.InfoShowModifiedDate = false; _save(); };
+        panel.Children.Add(showModified);
+
+        var showCreated = new CheckBox
+        {
+            Content = "作成日時（デフォルト: 非表示）",
+            IsChecked = p.InfoShowCreatedDate,
+            Margin = new Thickness(8, 0, 0, 2),
+        };
+        showCreated.Checked   += (_, _) => { p.InfoShowCreatedDate = true;  _save(); };
+        showCreated.Unchecked += (_, _) => { p.InfoShowCreatedDate = false; _save(); };
+        panel.Children.Add(showCreated);
+
+        var showDimensions = new CheckBox
+        {
+            Content = "画像/動画の解像度",
+            IsChecked = p.InfoShowDimensions,
+            Margin = new Thickness(8, 0, 0, 2),
+        };
+        showDimensions.Checked   += (_, _) => { p.InfoShowDimensions = true;  _save(); };
+        showDimensions.Unchecked += (_, _) => { p.InfoShowDimensions = false; _save(); };
+        panel.Children.Add(showDimensions);
+
+        var showDuration = new CheckBox
+        {
+            Content = "動画の再生時間",
+            IsChecked = p.InfoShowDuration,
+            Margin = new Thickness(8, 0, 0, 2),
+        };
+        showDuration.Checked   += (_, _) => { p.InfoShowDuration = true;  _save(); };
+        showDuration.Unchecked += (_, _) => { p.InfoShowDuration = false; _save(); };
+        panel.Children.Add(showDuration);
+
+        var showExtension = new CheckBox
+        {
+            Content = "拡張子（デフォルト: 非表示）",
+            IsChecked = p.InfoShowExtension,
+            Margin = new Thickness(8, 0, 0, 2),
+        };
+        showExtension.Checked   += (_, _) => { p.InfoShowExtension = true;  _save(); };
+        showExtension.Unchecked += (_, _) => { p.InfoShowExtension = false; _save(); };
+        panel.Children.Add(showExtension);
+
+        var showLocationBadge = new CheckBox
+        {
+            Content = "圧縮内/フォルダ内バッジ（📦/📁）",
+            IsChecked = p.InfoShowLocationBadge,
+            Margin = new Thickness(8, 0, 0, 2),
+        };
+        showLocationBadge.Checked   += (_, _) => { p.InfoShowLocationBadge = true;  _save(); };
+        showLocationBadge.Unchecked += (_, _) => { p.InfoShowLocationBadge = false; _save(); };
+        panel.Children.Add(showLocationBadge);
+
+        var showNetworkBadge = new CheckBox
+        {
+            Content = "ネットワークパスバッジ（🌐）",
+            IsChecked = p.InfoShowNetworkBadge,
+            Margin = new Thickness(8, 0, 0, 8),
+        };
+        showNetworkBadge.Checked   += (_, _) => { p.InfoShowNetworkBadge = true;  _save(); };
+        showNetworkBadge.Unchecked += (_, _) => { p.InfoShowNetworkBadge = false; _save(); };
+        panel.Children.Add(showNetworkBadge);
+
+                // ネットワークファイル
         var network = new CheckBox
         {
             Content = "ネットワーク上のファイル (\\\\server\\...) もプレビューする",

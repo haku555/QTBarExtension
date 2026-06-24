@@ -124,6 +124,38 @@ public class PreviewSettings
         ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".tbz2", ".xz", ".lzh", ".lza"
     ];
 
+    // ── デスクトップアイコンのプレビュー ─────────────────
+    /// <summary>デスクトップアイコン上でもプレビューを有効にするか（デフォルト: 有効）</summary>
+    public bool PreviewDesktopIcons { get; set; } = true;
+
+    // ── 情報テキスト表示設定 ──────────────────────────────
+    /// <summary>ファイルサイズを小数第2位まで表示するか（デフォルト: 有効）</summary>
+    public bool ShowSizeWithTwoDecimals { get; set; } = true;
+
+    /// <summary>情報テキストを複数行で表示するか（デフォルト: 有効）</summary>
+    public bool InfoTextMultiLine { get; set; } = true;
+
+    /// <summary>情報テキストに更新日時を表示するか（デフォルト: 有効）</summary>
+    public bool InfoShowModifiedDate { get; set; } = true;
+
+    /// <summary>情報テキストに画像/動画の解像度を表示するか（デフォルト: 有効）</summary>
+    public bool InfoShowDimensions { get; set; } = true;
+
+    /// <summary>情報テキストに動画の再生時間を表示するか（デフォルト: 有効）</summary>
+    public bool InfoShowDuration { get; set; } = true;
+
+    /// <summary>情報テキストに圧縮内/フォルダ内バッジを表示するか（デフォルト: 有効）</summary>
+    public bool InfoShowLocationBadge { get; set; } = true;
+
+    /// <summary>情報テキストにネットワークパスバッジを表示するか（デフォルト: 有効）</summary>
+    public bool InfoShowNetworkBadge { get; set; } = true;
+
+    /// <summary>情報テキストに作成日時を表示するか（デフォルト: 無効）</summary>
+    public bool InfoShowCreatedDate { get; set; } = false;
+
+    /// <summary>情報テキストに拡張子（種別）を表示するか（デフォルト: 無効）</summary>
+    public bool InfoShowExtension { get; set; } = false;
+
     // ── 再生位置の記憶用ストア（パス→秒） ─────────────────
     public Dictionary<string, double> PlaybackPositions { get; set; } = [];
 }
