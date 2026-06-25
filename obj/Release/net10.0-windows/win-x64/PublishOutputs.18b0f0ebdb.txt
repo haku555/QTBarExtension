@@ -1,2 +1,0 @@
-D:\Documents\github\QTBarExtension\bin\Release\net10.0-windows\win-x64\publish\icon\sdt_tip.png
-D:\Documents\github\QTBarExtension\bin\Release\net10.0-windows\win-x64\publish\QTBarExtension.exe

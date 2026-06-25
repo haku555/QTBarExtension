@@ -26,7 +26,7 @@ public class PreviewPopupWindow : Window
 
     private readonly PreviewSettings _settings;
     private readonly ContentControl _mediaHost;
-    private readonly TextBlock _infoText;
+    private readonly TextBox _infoText;   // 選択・コピー可能な読み取り専用TextBox
     private MediaElement? _media;
     private TextBox? _textBox;  // テキストプレビュー用TextBox参照
     private IntPtr _popupHwnd;  // このウィンドウのHWND（SetFocus用）
@@ -147,13 +147,22 @@ public class PreviewPopupWindow : Window
         var navRow = BuildNavRow();
         Grid.SetRow(navRow, 2);
 
-        _infoText = new TextBlock
+        _infoText = new TextBox
         {
-            FontSize     = 11,
-            Margin       = new Thickness(2, 4, 2, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth     = ContentWidth,
-            TextWrapping = System.Windows.TextWrapping.Wrap,
+            FontSize              = 11,
+            Margin                = new Thickness(2, 4, 2, 0),
+            MaxWidth              = ContentWidth,
+            TextWrapping          = System.Windows.TextWrapping.Wrap,
+            IsReadOnly            = true,
+            IsReadOnlyCaretVisible = false,
+            BorderThickness       = new Thickness(0),
+            Background            = Brushes.Transparent,
+            Padding               = new Thickness(0),
+            Cursor                = Cursors.IBeam,
+            Focusable             = true,
+            // デフォルトのSystemColorsボーダー・背景を除去してTextBlockと同じ見た目にする
+            OverridesDefaultStyle = true,
+            Template              = BuildPlainTextBoxTemplate(),
         };
         Grid.SetRow(_infoText, 3);
 
@@ -176,7 +185,12 @@ public class PreviewPopupWindow : Window
         _rootBorder.Background  = new SolidColorBrush(BgColor);
         _rootBorder.BorderBrush = new SolidColorBrush(BorderColor);
         if (_infoText != null)
-            _infoText.Foreground = new SolidColorBrush(InfoTextColor);
+        {
+            _infoText.Foreground         = new SolidColorBrush(InfoTextColor);
+            _infoText.Background         = Brushes.Transparent;
+            _infoText.SelectionBrush     = new SolidColorBrush(Color.FromArgb(100, 51, 153, 255));
+            _infoText.CaretBrush         = Brushes.Transparent;
+        }
         // 動画コントロールの色更新
         ApplyControlTheme();
     }
@@ -211,6 +225,7 @@ public class PreviewPopupWindow : Window
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_LBUTTONDOWN = 0x0201;
+        const int WM_RBUTTONDOWN = 0x0204;
 
         if (msg == WM_MOUSEACTIVATE)
         {
@@ -218,21 +233,55 @@ public class PreviewPopupWindow : Window
             return MA_NOACTIVATE;
         }
 
-        // テキストプレビュー表示中にクリックされたとき：
+        // クリック時：クリック座標が _infoText 上かどうかで振り分ける。
+        // lParam の下位16bit=クライアントX、上位16bit=クライアントY。
         // WndProcはUIスレッドで動くため AttachThreadInput は不要。
-        // SetFocus(hwnd) を同一スレッドから直接呼ぶことで Explorerスレッドに
-        // 一切干渉せずにWin32フォーカスをこのウィンドウへ移せる。
-        if (msg == WM_LBUTTONDOWN && _textBox != null)
+        if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN)
         {
             try
             {
+                int clientX = (short)(lParam.ToInt64() & 0xFFFF);
+                int clientY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                bool onInfoText = IsClientPointOnInfoText(clientX, clientY);
+
                 SetFocus(hwnd);
-                Dispatcher.BeginInvoke(() => _textBox?.Focus(), DispatcherPriority.Input);
+                if (onInfoText)
+                    Dispatcher.BeginInvoke(() => _infoText?.Focus(), DispatcherPriority.Input);
+                else if (_textBox != null)
+                    Dispatcher.BeginInvoke(() => _textBox?.Focus(), DispatcherPriority.Input);
+                else
+                    Dispatcher.BeginInvoke(() => _infoText?.Focus(), DispatcherPriority.Input);
             }
             catch { }
         }
 
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// ウィンドウクライアント座標 (clientX, clientY) が _infoText 要素の
+    /// レイアウト矩形内に収まるかを判定する。
+    /// </summary>
+    private bool IsClientPointOnInfoText(int clientX, int clientY)
+    {
+        try
+        {
+            if (_infoText == null || !_infoText.IsVisible) return false;
+            // WPF論理座標（DIP）をクライアントピクセル座標に変換して比較
+            var topLeft     = _infoText.TranslatePoint(new Point(0, 0), this);
+            var bottomRight = _infoText.TranslatePoint(
+                new Point(_infoText.ActualWidth, _infoText.ActualHeight), this);
+            // TranslatePoint は DIP 座標を返すが、WndProc の lParam は
+            // 物理ピクセル。DPI スケールで変換する。
+            double dpi   = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            double left  = topLeft.X     * dpi;
+            double top   = topLeft.Y     * dpi;
+            double right = bottomRight.X * dpi;
+            double bottom= bottomRight.Y * dpi;
+            return clientX >= left && clientX <= right &&
+                   clientY >= top  && clientY <= bottom;
+        }
+        catch { return false; }
     }
 
     private UIElement BuildControlRow()
@@ -1029,5 +1078,24 @@ public class PreviewPopupWindow : Window
         if (_controlPanel != null) _controlPanel.Visibility = Visibility.Collapsed;
         if (_navRow != null) _navRow.Visibility = Visibility.Collapsed;
         base.Hide();
+    }
+
+    /// <summary>
+    /// TextBlockと同じ見た目になる最小限のTextBoxテンプレート。
+    /// OverridesDefaultStyle=true と組み合わせることでシステムのBorder/背景を完全に除去する。
+    /// テキスト選択・コピーはWPFの標準TextBox機能で動作する。
+    /// </summary>
+    private static System.Windows.Controls.ControlTemplate BuildPlainTextBoxTemplate()
+    {
+        var template = new System.Windows.Controls.ControlTemplate(typeof(TextBox));
+        // PART_ContentHost は TextBox が選択・スクロール領域として必須とする名前
+        var scrollViewer = new System.Windows.FrameworkElementFactory(typeof(ScrollViewer), "PART_ContentHost");
+        scrollViewer.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
+        scrollViewer.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
+        scrollViewer.SetValue(ScrollViewer.PaddingProperty, new Thickness(0));
+        scrollViewer.SetValue(ScrollViewer.MarginProperty, new Thickness(0));
+        scrollViewer.SetValue(FrameworkElement.FocusableProperty, false);
+        template.VisualTree = scrollViewer;
+        return template;
     }
 }

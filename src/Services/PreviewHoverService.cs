@@ -167,6 +167,19 @@ public class PreviewHoverService : IDisposable
     {
         if (!_settings.Preview.Enabled) { HidePopupImmediate(); return; }
 
+        // ── 他アプリがフォアグラウンドになったらプレビューを閉じる ─────
+        // フォアグラウンドウィンドウがExplorer・QTBarExtension・プレビュー自身
+        // のいずれでもなければプレビューを即時非表示にする。
+        if (_popup != null && _popup.IsVisible && _currentLoadPath != null)
+        {
+            IntPtr fgWnd = GetForegroundWindow();
+            if (fgWnd != IntPtr.Zero && !IsAllowedForeground(fgWnd))
+            {
+                HidePopupImmediate();
+                return;
+            }
+        }
+
         int ptX = _lastPtX, ptY = _lastPtY;
 
         // ── カーソル移動中の離脱検知 ─────────────────────────────────
@@ -650,6 +663,41 @@ public class PreviewHoverService : IDisposable
             if (cur == fg) return true;
             cur = NativeMethodsExtra.GetParent(cur);
         }
+        return false;
+    }
+
+    /// <summary>
+    /// フォアグラウンドウィンドウがプレビューを表示し続けてよい対象かどうかを判定する。
+    /// Explorer (CabinetWClass)・デスクトップ(Progman/WorkerW)・QTBarExtension自身
+    /// のいずれかであれば true。それ以外の第三者アプリが前面に来た場合は false。
+    /// </summary>
+    private bool IsAllowedForeground(IntPtr fgWnd)
+    {
+        // プレビューポップアップ自身
+        if (_popup != null)
+        {
+            try
+            {
+                var popupHwnd = new System.Windows.Interop.WindowInteropHelper(_popup).Handle;
+                if (popupHwnd != IntPtr.Zero && fgWnd == popupHwnd) return true;
+            }
+            catch { }
+        }
+
+        // フォアグラウンドウィンドウのクラス名で判定
+        string cls = GetClassNameStr(fgWnd);
+        if (cls == "CabinetWClass" || cls == "Progman" || cls == "WorkerW") return true;
+
+        // QTBarExtensionのウィンドウ（設定画面・サブフォルダメニュー等）
+        // プロセスIDが一致するトップレベルウィンドウは許可
+        try
+        {
+            GetWindowThreadProcessId(fgWnd, out uint fgPid);
+            uint selfPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
+            if (fgPid == selfPid) return true;
+        }
+        catch { }
+
         return false;
     }
 

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Documents\\github\\QTBarExtension\\QTBarExtension.csproj": {}
+    "D:\\ダウンロード\\QTBarExtension\\QTBarExtension.csproj": {}
   },
   "projects": {
-    "D:\\Documents\\github\\QTBarExtension\\QTBarExtension.csproj": {
+    "D:\\ダウンロード\\QTBarExtension\\QTBarExtension.csproj": {
       "version": "1.1.0",
       "restore": {
-        "projectUniqueName": "D:\\Documents\\github\\QTBarExtension\\QTBarExtension.csproj",
+        "projectUniqueName": "D:\\ダウンロード\\QTBarExtension\\QTBarExtension.csproj",
         "projectName": "QTBarExtension",
-        "projectPath": "D:\\Documents\\github\\QTBarExtension\\QTBarExtension.csproj",
+        "projectPath": "D:\\ダウンロード\\QTBarExtension\\QTBarExtension.csproj",
         "packagesPath": "C:\\Users\\nekog\\.nuget\\packages\\",
-        "outputPath": "D:\\Documents\\github\\QTBarExtension\\obj\\",
+        "outputPath": "D:\\ダウンロード\\QTBarExtension\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\nekog\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -46,12 +46,6 @@
           "framework": "net10.0-windows7.0",
           "targetAlias": "net10.0-windows",
           "dependencies": {
-            "Microsoft.NET.ILLink.Tasks": {
-              "suppressParent": "All",
-              "target": "Package",
-              "version": "[10.0.9, )",
-              "autoReferenced": true
-            },
             "SharpCompress": {
               "target": "Package",
               "version": "[0.48.0, )",
@@ -71,20 +65,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-              "version": "[10.0.9, 10.0.9]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Runtime.win-x64",
-              "version": "[10.0.9, 10.0.9]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
-              "version": "[10.0.9, 10.0.9]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -384,11 +364,6 @@
             "System.Xml.XPath": "(,4.3.32767]",
             "System.Xml.XPath.XDocument": "(,5.0.32767]"
           }
-        }
-      },
-      "runtimes": {
-        "win-x64": {
-          "#import": []
         }
       }
     }
