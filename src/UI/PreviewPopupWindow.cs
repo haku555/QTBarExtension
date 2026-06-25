@@ -792,6 +792,14 @@ public class PreviewPopupWindow : Window
                 delays[i] = Math.Max(delayMs, 20); // 最低20ms
                 if (i == 0) { frameW = f.PixelWidth; frameH = f.PixelHeight; }
             }
+
+            // FPS上書きが有効な場合、全フレームの遅延を固定値に置き換える
+            if (_settings.AnimatedWebpFpsOverrideEnabled && _settings.AnimatedWebpFpsOverride > 0)
+            {
+                int fixedMs = Math.Max(20, (int)Math.Round(1000.0 / _settings.AnimatedWebpFpsOverride));
+                for (int i = 0; i < delays.Length; i++)
+                    delays[i] = fixedMs;
+            }
         }
         catch { return MakeErrorBox("アニメーションWebPを読み込めませんでした"); }
 

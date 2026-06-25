@@ -695,6 +695,55 @@ public class SettingsWindow : Window
         hideAnimWebpOnHover.Unchecked += (_, _) => { p.HideAnimatedWebpOnHover = false; _save(); };
         panel.Children.Add(hideAnimWebpOnHover);
 
+        // アニメーションWebP: FPS上書き
+        var animFpsHeader = new TextBlock
+        {
+            Text = "アニメーションWebP 再生FPS",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 8, 0, 4),
+        };
+        panel.Children.Add(animFpsHeader);
+
+        var animFpsEnableRow = new CheckBox
+        {
+            Content = "FPSを固定する（メタデータのフレーム遅延を無視）",
+            IsChecked = p.AnimatedWebpFpsOverrideEnabled,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        var animFpsRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+        animFpsRow.Children.Add(new TextBlock { Text = "FPS:", Width = 140, VerticalAlignment = VerticalAlignment.Center });
+        var animFpsBox = new TextBox
+        {
+            Text = p.AnimatedWebpFpsOverride > 0 ? p.AnimatedWebpFpsOverride.ToString("0.#") : "15",
+            Width = 60,
+            IsEnabled = p.AnimatedWebpFpsOverrideEnabled,
+        };
+        animFpsBox.LostFocus += (_, _) =>
+        {
+            if (double.TryParse(animFpsBox.Text, out double v) && v is >= 1 and <= 120)
+            { p.AnimatedWebpFpsOverride = v; _save(); }
+        };
+        animFpsRow.Children.Add(animFpsBox);
+        animFpsRow.Children.Add(new TextBlock { Text = " fps（1〜120）", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) });
+
+        animFpsEnableRow.Checked += (_, _) =>
+        {
+            p.AnimatedWebpFpsOverrideEnabled = true;
+            animFpsBox.IsEnabled = true;
+            if (p.AnimatedWebpFpsOverride <= 0) p.AnimatedWebpFpsOverride = 15;
+            animFpsBox.Text = p.AnimatedWebpFpsOverride.ToString("0.#");
+            _save();
+        };
+        animFpsEnableRow.Unchecked += (_, _) =>
+        {
+            p.AnimatedWebpFpsOverrideEnabled = false;
+            animFpsBox.IsEnabled = false;
+            _save();
+        };
+        panel.Children.Add(animFpsEnableRow);
+        panel.Children.Add(animFpsRow);
+
         // デスクトップアイコンのプレビュー
         var desktopIcons = new CheckBox
         {
@@ -993,6 +1042,19 @@ public class SettingsWindow : Window
         panel.Children.Add(MakeIntRow("最大幅 (px):",   p.TextMaxWidth,  64, 2048, v => { p.TextMaxWidth  = v; _save(); }));
         panel.Children.Add(MakeIntRow("最大高 (px):",   p.TextMaxHeight, 64, 2048, v => { p.TextMaxHeight = v; _save(); }));
         panel.Children.Add(MakeIntRow("読み込みサイズ (KiB):", p.TextReadKiB, 1, 1024, v => { p.TextReadKiB = v; _save(); }));
+
+        // フォントサイズ（テキストタブと同じ設定を参照）
+        var txtFontSizeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+        txtFontSizeRow.Children.Add(new TextBlock { Text = "フォントサイズ:", Width = 220, VerticalAlignment = VerticalAlignment.Center });
+        var txtFontSizeBox = new TextBox { Text = p.TextFontSize.ToString("0.#"), Width = 70 };
+        txtFontSizeBox.LostFocus += (_, _) =>
+        {
+            if (double.TryParse(txtFontSizeBox.Text, out double v) && v is >= 6 and <= 48)
+            { p.TextFontSize = v; _save(); }
+        };
+        txtFontSizeRow.Children.Add(txtFontSizeBox);
+        txtFontSizeRow.Children.Add(new TextBlock { Text = " px（6〜48）", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) });
+        panel.Children.Add(txtFontSizeRow);
 
         item.Content = new ScrollViewer
         {

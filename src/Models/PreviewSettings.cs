@@ -82,7 +82,7 @@ public class PreviewSettings
     public string TextFontFamily { get; set; } = "Consolas";
 
     /// <summary>テキストプレビューのフォントサイズ</summary>
-    public double TextFontSize { get; set; } = 12.0;
+    public double TextFontSize { get; set; } = 14.0;
 
     /// <summary>テキストプレビューの文字色 (#RRGGBB)</summary>
     public string TextForegroundColor { get; set; } = "#E0E0E0";
@@ -104,7 +104,7 @@ public class PreviewSettings
     public int VideoMaxHeight { get; set; } = 384;
 
     /// <summary>テキストプレビューの最大幅 (px)</summary>
-    public int TextMaxWidth { get; set; } = 256;
+    public int TextMaxWidth { get; set; } = 512;
 
     /// <summary>テキストプレビューの最大高さ (px)</summary>
     public int TextMaxHeight { get; set; } = 256;
@@ -171,6 +171,18 @@ public class PreviewSettings
 
     /// <summary>情報テキストに拡張子（種別）を表示するか（デフォルト: 無効）</summary>
     public bool InfoShowExtension { get; set; } = false;
+
+    /// <summary>
+    /// アニメーションWebPのFPS上書き設定。0以下のときはメタデータのフレーム遅延をそのまま使用。
+    /// 正の値を指定するとすべてのフレームをこのFPSで再生する（メタデータを無視）。
+    /// </summary>
+    public double AnimatedWebpFpsOverride { get; set; } = 0;
+
+    /// <summary>
+    /// アニメーションWebPのFPS上書きを有効にするか（デフォルト: 無効）。
+    /// 有効時は AnimatedWebpFpsOverride の値を使用してフレーム遅延を固定する。
+    /// </summary>
+    public bool AnimatedWebpFpsOverrideEnabled { get; set; } = false;
 
     // ── 再生位置の記憶用ストア（パス→秒） ─────────────────
     public Dictionary<string, double> PlaybackPositions { get; set; } = [];
