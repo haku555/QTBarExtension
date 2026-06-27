@@ -703,11 +703,18 @@ public class PreviewPopupWindow : Window
             double dur = _media.NaturalDuration.HasTimeSpan
                 ? _media.NaturalDuration.TimeSpan.TotalSeconds : 0;
             if (_timeLabel != null) _timeLabel.Text = $"0:00 / {FormatTime(dur)}";
+
+            // 実解像度をDimensionsに設定
+            int vw = _media.NaturalVideoWidth, vh = _media.NaturalVideoHeight;
+            if (vw > 0 && vh > 0)
+                capturedInfo.Dimensions = $"{vw} x {vh}";
+
             if (dur > 0)
-            {
                 capturedInfo.Duration = TimeSpan.FromSeconds(dur);
+
+            if (dur > 0 || (vw > 0 && vh > 0))
                 _infoText.Text = BuildInfoText(capturedInfo);
-            }
+
             // 実解像度が判明した時点でアスペクト比に合わせてリサイズ（余白を排除）
             ResizeVideoToNaturalAspect();
         };

@@ -290,7 +290,12 @@ public class PreviewContentProvider
                         {
                             info.Image = LoadImage(path, path);
                             if (info.Image != null)
-                                info.Dimensions = $"{info.Image.PixelWidth} x {info.Image.PixelHeight}";
+                            {
+                                var (rw, rh) = GetActualImageSize(path);
+                                info.Dimensions = rw > 0
+                                    ? $"{rw} x {rh}"
+                                    : $"{info.Image.PixelWidth} x {info.Image.PixelHeight}";
+                            }
                         }
                         break;
                     case PreviewKind.Text:
@@ -343,14 +348,19 @@ public class PreviewContentProvider
                     using var ms = new MemoryStream();
                     stream.CopyTo(ms);
                     ms.Position = 0;
+                    var (rw, rh) = GetActualImageSizeFromStream(ms);
+                    ms.Position = 0;
                     var bmp = DecodeImage(ms);
                     if (bmp != null)
                     {
                         info.Image = bmp;
+                        info.Dimensions = rw > 0
+                            ? $"{rw} x {rh}"
+                            : $"{bmp.PixelWidth} x {bmp.PixelHeight}";
                         AddToCache(cacheKey, bmp, ms.Length);
                     }
                 }
-                if (info.Image != null)
+                if (info.Image != null && string.IsNullOrEmpty(info.Dimensions))
                     info.Dimensions = $"{info.Image.PixelWidth} x {info.Image.PixelHeight}";
                 break;
 
@@ -402,14 +412,19 @@ public class PreviewContentProvider
                     using var ms = new MemoryStream();
                     stream.CopyTo(ms);
                     ms.Position = 0;
+                    var (rw, rh) = GetActualImageSizeFromStream(ms);
+                    ms.Position = 0;
                     var bmp = DecodeImage(ms);
                     if (bmp != null)
                     {
                         info.Image = bmp;
+                        info.Dimensions = rw > 0
+                            ? $"{rw} x {rh}"
+                            : $"{bmp.PixelWidth} x {bmp.PixelHeight}";
                         AddToCache(cacheKey, bmp, ms.Length);
                     }
                 }
-                if (info.Image != null)
+                if (info.Image != null && string.IsNullOrEmpty(info.Dimensions))
                     info.Dimensions = $"{info.Image.PixelWidth} x {info.Image.PixelHeight}";
                 break;
 
@@ -441,6 +456,45 @@ public class PreviewContentProvider
     }
 
     // ── 画像読み込み ────────────────────────────────────────
+    // ── 実解像度取得（デコードせずメタデータのみ読む） ────────────────
+    // DecodePixelWidthによるリサイズ前の本来のピクセルサイズを返す
+    private static (int w, int h) GetActualImageSize(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var decoder = BitmapDecoder.Create(fs,
+                BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile,
+                BitmapCacheOption.None);
+            if (decoder.Frames.Count > 0)
+            {
+                var frame = decoder.Frames[0];
+                return (frame.PixelWidth, frame.PixelHeight);
+            }
+        }
+        catch { }
+        return (0, 0);
+    }
+
+    private static (int w, int h) GetActualImageSizeFromStream(Stream stream)
+    {
+        try
+        {
+            long pos = stream.Position;
+            var decoder = BitmapDecoder.Create(stream,
+                BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile,
+                BitmapCacheOption.None);
+            stream.Position = pos;  // 巻き戻して後続のDecodeImageでも使えるように
+            if (decoder.Frames.Count > 0)
+            {
+                var frame = decoder.Frames[0];
+                return (frame.PixelWidth, frame.PixelHeight);
+            }
+        }
+        catch { }
+        return (0, 0);
+    }
+
     private BitmapImage? LoadImage(string path, string cacheKey)
     {
         if (TryGetCachedImage(cacheKey, out var cached)) return cached;
