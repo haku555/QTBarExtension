@@ -37,6 +37,7 @@ public class SettingsWindow : Window
         tab.Items.Add(MakePreviewGeneralTab());
         tab.Items.Add(MakePreviewExtensionsTab());
         tab.Items.Add(MakePreviewWindowTab());
+        tab.Items.Add(MakeAboutTab());
         Content = tab;
     }
 
@@ -343,7 +344,7 @@ public class SettingsWindow : Window
 
         var version = new TextBlock
         {
-            Text = "QTBarExtension v1.1  |  .NET 10 LTS  |  Windows 11 対応",
+            Text = "QTBarExtension v1.3  |  .NET 10 LTS  |  Windows 11 対応",
             FontSize = 10, Foreground = Brushes.Gray,
             Margin = new Thickness(0, 16, 0, 0),
         };
@@ -357,6 +358,87 @@ public class SettingsWindow : Window
         panel.Children.Add(shiftWheel);
         panel.Children.Add(fullNameTip);
         panel.Children.Add(version);
+
+        item.Content = panel;
+        return item;
+    }
+
+    // ── 情報タブ（バージョン・著作権・ライセンス） ─────────────────────
+    private TabItem MakeAboutTab()
+    {
+        var item  = new TabItem { Header = "情報" };
+        var panel = new StackPanel { Margin = new Thickness(12) };
+
+        var titleText = new TextBlock
+        {
+            Text = "QTBarExtension",
+            FontSize = 18, FontWeight = FontWeights.Bold,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        var versionText = new TextBlock
+        {
+            Text = "バージョン 1.3.0  |  .NET 10 LTS  |  Windows 11 対応",
+            FontSize = 12, Foreground = Brushes.Gray,
+            Margin = new Thickness(0, 0, 0, 12),
+        };
+
+        var copyrightText = new TextBlock
+        {
+            Text = "Copyright (c) 2026 HK",
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 12),
+        };
+
+        var licenseHeader = new TextBlock
+        {
+            Text = "ライセンス",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 4),
+        };
+
+        var licenseBody = new TextBox
+        {
+            Text = "MIT License\n\n" +
+                   "Copyright (c) 2026 HK\n\n" +
+                   "Permission is hereby granted, free of charge, to any person obtaining a copy " +
+                   "of this software and associated documentation files (the \"Software\"), to deal " +
+                   "in the Software without restriction, including without limitation the rights " +
+                   "to use, copy, modify, merge, publish, distribute, sublicense, and/or sell " +
+                   "copies of the Software, and to permit persons to whom the Software is " +
+                   "furnished to do so, subject to the following conditions:\n\n" +
+                   "The above copyright notice and this permission notice shall be included in all " +
+                   "copies or substantial portions of the Software.\n\n" +
+                   "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR " +
+                   "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, " +
+                   "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE " +
+                   "AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER " +
+                   "LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, " +
+                   "OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE " +
+                   "SOFTWARE.",
+            IsReadOnly = true,
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = true,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Height = 320,
+            FontSize = 11,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(1),
+        };
+
+        var repoText = new TextBlock
+        {
+            Text = "GitHub: https://github.com/haku555/QTBarExtension",
+            FontSize = 11, Foreground = Brushes.Gray,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+
+        panel.Children.Add(titleText);
+        panel.Children.Add(versionText);
+        panel.Children.Add(copyrightText);
+        panel.Children.Add(licenseHeader);
+        panel.Children.Add(licenseBody);
+        panel.Children.Add(repoText);
 
         item.Content = panel;
         return item;
