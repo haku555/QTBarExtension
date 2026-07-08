@@ -45,13 +45,17 @@ public class PreviewPopupWindow : Window
     private int _folderIndex;
     private Grid? _controlPanel;
 
-    // アニメーションWebP再生用
+    // アニメーション画像再生用（WebP/GIF/APNG共通）
     private DispatcherTimer? _animTimer;
     private System.Windows.Controls.Image? _animImage;
-    private BitmapFrame[]? _animFrames;
+    private BitmapSource[]? _animFrames;  // 各フレームは透明キャンバス上に合成済み（前フレームの残像対策）
     private int[] _animDelaysMs = [];
     private int _animFrameIndex;
     private bool _animPlaying;
+
+    // 透過部分の背景ブラシキャッシュ（市松模様用）
+    private Brush? _checkerBrushCache;
+    private bool _checkerBrushCacheIsDark;
 
     // ルートBorderへの参照（テーマ再適用用）
     private readonly Border _rootBorder;
@@ -96,6 +100,47 @@ public class PreviewPopupWindow : Window
     private Color NavLabelColor  => IsDark ? Color.FromRgb(180, 180, 180)      : Color.FromRgb(80,  80,  80);
     private Color AudioTextColor => IsDark ? Colors.White                       : Color.FromRgb(30,  30,  30);
     private Color ErrorTextColor => IsDark ? Color.FromRgb(160, 160, 160)      : Color.FromRgb(100, 100, 100);
+
+    // ── 透過画像・アニメーションの背景ブラシ ─────────────────────
+    // 設定に応じて「ツールチップと同色」または「市松模様（透明グリッド）」を返す。
+    // 既定値はツールチップと同色（TransparencyBackground = "tooltip"）。
+    private Brush GetTransparencyBackgroundBrush()
+    {
+        if (_settings.TransparencyBackground == "checkerboard")
+            return GetCheckerboardBrush();
+        return new SolidColorBrush(BgColor);
+    }
+
+    private Brush GetCheckerboardBrush()
+    {
+        if (_checkerBrushCache != null && _checkerBrushCacheIsDark == IsDark)
+            return _checkerBrushCache;
+
+        const double cell = 8;
+        Color c1 = IsDark ? Color.FromRgb(70, 70, 70) : Color.FromRgb(255, 255, 255);
+        Color c2 = IsDark ? Color.FromRgb(45, 45, 45) : Color.FromRgb(205, 205, 205);
+
+        var group = new DrawingGroup();
+        using (var dc = group.Open())
+        {
+            dc.DrawRectangle(new SolidColorBrush(c1), null, new Rect(0, 0, cell * 2, cell * 2));
+            dc.DrawRectangle(new SolidColorBrush(c2), null, new Rect(0, 0, cell, cell));
+            dc.DrawRectangle(new SolidColorBrush(c2), null, new Rect(cell, cell, cell, cell));
+        }
+        group.Freeze();
+
+        var brush = new DrawingBrush(group)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, cell * 2, cell * 2),
+            ViewportUnits = BrushMappingMode.Absolute,
+        };
+        brush.Freeze();
+
+        _checkerBrushCache = brush;
+        _checkerBrushCacheIsDark = IsDark;
+        return brush;
+    }
 
     // テキストプレビュー色（設定値があれば使い、"auto"/"system"なら自動）
     private Color TextFgColor => (_settings.TextForegroundColor == "auto" || string.IsNullOrEmpty(_settings.TextForegroundColor))
@@ -656,7 +701,7 @@ public class PreviewPopupWindow : Window
         var grid = new Grid
         {
             Width = dispW, Height = dispH,
-            Background = new SolidColorBrush(ImageBgColor),
+            Background = GetTransparencyBackgroundBrush(),
         };
         var imageElement = new System.Windows.Controls.Image
         {
@@ -755,49 +800,66 @@ public class PreviewPopupWindow : Window
         ClampToWorkArea(Left, Top);
     }
 
-    // ── アニメーションWebP再生 ───────────────────────────────────────
+    // ── アニメーション画像再生（WebP / GIF / APNG共通） ───────────────
+    // 各フレームは「透明な専用キャンバス」に個別合成してから表示する。
+    // デコーダの生フレームをそのまま使い回すと、差分（パッチ）フレームの
+    // 透明部分に前フレームの絵が透けて見える「残像」バグが起きるため、
+    // 1フレームごとにフルサイズの透明キャンバスへ描き直して残像を断つ。
     private UIElement? BuildAnimatedWebp(Services.PreviewInfo info)
     {
         _mediaHasVideo = false;
         StopAnimWebp();
 
-        BitmapFrame[]? frames = null;
+        BitmapSource[]? frames = null;
         int[]? delays = null;
-        int frameW = 0, frameH = 0;
+        int canvasW = 0, canvasH = 0;
 
         try
         {
-            byte[] webpBytes = System.IO.File.ReadAllBytes(info.TempMediaPath!);
-            using var ms = new System.IO.MemoryStream(webpBytes);
+            byte[] fileBytes = System.IO.File.ReadAllBytes(info.TempMediaPath!);
+            using var ms = new System.IO.MemoryStream(fileBytes);
             var decoder = BitmapDecoder.Create(ms,
                 BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-            if (decoder.Frames.Count == 0) return MakeErrorBox("フレームを読み込めませんでした");
+            int count = decoder.Frames.Count;
+            if (count == 0) return MakeErrorBox("フレームを読み込めませんでした");
 
-            frames = new BitmapFrame[decoder.Frames.Count];
-            delays = new int[decoder.Frames.Count];
-            for (int i = 0; i < decoder.Frames.Count; i++)
+            // 論理キャンバスサイズ：最大フレーム寸法を採用（多くのエンコーダで
+            // 先頭フレーム=フルサイズだが、念のため全フレームの最大値を使う）
+            foreach (var f in decoder.Frames)
+            {
+                canvasW = Math.Max(canvasW, f.PixelWidth);
+                canvasH = Math.Max(canvasH, f.PixelHeight);
+            }
+
+            frames = new BitmapSource[count];
+            delays = new int[count];
+            for (int i = 0; i < count; i++)
             {
                 var f = decoder.Frames[i];
-                f.Freeze();
-                frames[i] = f;
-                // フレーム遅延はメタデータから取得（WebPはミリ秒単位）
-                // BitmapFrame.Metadataが取れない場合は100ms（10fps相当）をデフォルトに
+
+                // フレーム遅延はメタデータから取得（単位:10ms、GIF/WebP共通のパス）
                 int delayMs = 100;
+                var (offsetX, offsetY) = (0, 0);
                 try
                 {
                     if (f.Metadata is BitmapMetadata meta)
                     {
-                        // WebPメタデータのパスはデコーダ依存
-                        // GIFと同様 /grctlext/Delay を試みる（単位:10ms）
-                        object? delayObj = null;
-                        try { delayObj = meta.GetQuery("/grctlext/Delay"); } catch { }
-                        if (delayObj is ushort gifDelay && gifDelay > 0)
-                            delayMs = gifDelay * 10;
+                        try
+                        {
+                            if (meta.GetQuery("/grctlext/Delay") is ushort gifDelay && gifDelay > 0)
+                                delayMs = gifDelay * 10;
+                        }
+                        catch { }
+                        try { if (meta.GetQuery("/imgdesc/Left") is ushort l) offsetX = l; } catch { }
+                        try { if (meta.GetQuery("/imgdesc/Top")  is ushort t) offsetY = t; } catch { }
                     }
                 }
                 catch { }
                 delays[i] = Math.Max(delayMs, 20); // 最低20ms
-                if (i == 0) { frameW = f.PixelWidth; frameH = f.PixelHeight; }
+
+                // 前フレームの残像が出ないよう、フルサイズの透明キャンバスへ
+                // このフレームの画素だけを書き込んだ合成結果を保持する
+                frames[i] = ComposeFrameOnTransparentCanvas(f, canvasW, canvasH, offsetX, offsetY);
             }
 
             // FPS上書きが有効な場合、全フレームの遅延を固定値に置き換える
@@ -808,14 +870,14 @@ public class PreviewPopupWindow : Window
                     delays[i] = fixedMs;
             }
         }
-        catch { return MakeErrorBox("アニメーションWebPを読み込めませんでした"); }
+        catch { return MakeErrorBox("アニメーション画像を読み込めませんでした"); }
 
-        if (frames == null || frames.Length == 0 || delays == null)
+        if (frames == null || frames.Length == 0 || delays == null || canvasW <= 0 || canvasH <= 0)
             return MakeErrorBox("フレームがありません");
 
-        double scale = Math.Min(Math.Min(ContentWidth / frameW, ContentHeight / frameH), 1.0);
-        double dispW = Math.Max(Math.Floor(frameW * scale), MinContentSide);
-        double dispH = Math.Max(Math.Floor(frameH * scale), MinContentSide);
+        double scale = Math.Min(Math.Min(ContentWidth / canvasW, ContentHeight / canvasH), 1.0);
+        double dispW = Math.Max(Math.Floor(canvasW * scale), MinContentSide);
+        double dispH = Math.Max(Math.Floor(canvasH * scale), MinContentSide);
 
         _animImage = new System.Windows.Controls.Image
         {
@@ -828,13 +890,13 @@ public class PreviewPopupWindow : Window
         var grid = new Grid
         {
             Width = dispW, Height = dispH,
-            Background = new SolidColorBrush(ImageBgColor),
+            Background = GetTransparencyBackgroundBrush(),
         };
         grid.Children.Add(_animImage);
         SetContentSize(dispW, dispH);
 
         // 情報更新
-        info.Dimensions = $"{frameW} x {frameH}";
+        info.Dimensions = $"{canvasW} x {canvasH}";
         double totalMs = 0; foreach (var d in delays) totalMs += d;
         info.Duration = TimeSpan.FromMilliseconds(totalMs);
         _infoText.Text = BuildInfoText(info);
@@ -861,6 +923,60 @@ public class PreviewPopupWindow : Window
         _animTimer.Tick += OnAnimTick;
 
         return grid;
+    }
+
+    /// <summary>
+    /// デコーダの生フレーム（差分/部分フレームの場合あり）を、フルサイズの
+    /// 透明なキャンバスへオフセット位置にそのまま書き込んで合成する。
+    /// キャンバスは毎回新規作成（全ピクセルが完全透明）のため、
+    /// 前フレームの内容が透けて残る「残像」は原理的に発生しない。
+    /// </summary>
+    private static BitmapSource ComposeFrameOnTransparentCanvas(
+        BitmapFrame frame, int canvasW, int canvasH, int offsetX, int offsetY)
+    {
+        var converted = new FormatConvertedBitmap();
+        converted.BeginInit();
+        converted.Source = frame;
+        converted.DestinationFormat = PixelFormats.Pbgra32;
+        converted.EndInit();
+        converted.Freeze();
+
+        int fw = converted.PixelWidth, fh = converted.PixelHeight;
+
+        // フレームがキャンバスと同一サイズ・オフセット無しなら合成不要（そのまま返す）
+        if (fw == canvasW && fh == canvasH && offsetX == 0 && offsetY == 0)
+            return converted;
+
+        var canvas = new WriteableBitmap(canvasW, canvasH, 96, 96, PixelFormats.Pbgra32, null);
+        // WriteableBitmapは新規作成時、全ピクセルが0（完全透明）で初期化される
+
+        int destX = Math.Max(0, offsetX);
+        int destY = Math.Max(0, offsetY);
+        int copyW = Math.Min(fw, canvasW - destX);
+        int copyH = Math.Min(fh, canvasH - destY);
+        if (copyW > 0 && copyH > 0)
+        {
+            int srcStride = fw * 4;
+            var pixels = new byte[srcStride * fh];
+            converted.CopyPixels(pixels, srcStride, 0);
+
+            var rect = new Int32Rect(destX, destY, copyW, copyH);
+            if (copyW == fw && copyH == fh)
+            {
+                canvas.WritePixels(rect, pixels, srcStride, 0);
+            }
+            else
+            {
+                int dstStride = copyW * 4;
+                var sub = new byte[dstStride * copyH];
+                for (int y = 0; y < copyH; y++)
+                    Array.Copy(pixels, y * srcStride, sub, y * dstStride, dstStride);
+                canvas.WritePixels(rect, sub, dstStride, 0);
+            }
+        }
+
+        canvas.Freeze();
+        return canvas;
     }
 
     private void OnAnimTick(object? sender, EventArgs e)

@@ -29,7 +29,7 @@ public class PreviewInfo
     public bool IsArchiveEntry { get; set; }
     public bool IsNetworkPath { get; set; }
     public bool IsFolderItem { get; set; }           // フォルダ/zip内ナビゲーション由来
-    public bool IsAnimatedWebp { get; set; }         // アニメーションWebP（動画UIで表示）
+    public bool IsAnimatedWebp { get; set; }         // アニメーション画像（WebP/GIF/APNG、動画UIで表示）
 
     // ── フォルダ内ナビゲーション用 ──────────────────────────
     /// <summary>同フォルダ/zip内でプレビュー可能なファイルパスの一覧（null=ナビ不要）</summary>
@@ -278,9 +278,8 @@ public class PreviewContentProvider
                 switch (kind)
                 {
                     case PreviewKind.Image:
-                        // アニメーションWebP判定: ANIMチャンクがあれば動画UIで表示
-                        if (Path.GetExtension(path).Equals(".webp", StringComparison.OrdinalIgnoreCase)
-                            && IsAnimatedWebpFile(path))
+                        // アニメーション画像（WebP/GIF/APNG）判定: 複数フレームがあれば動画UIで表示
+                        if (IsAnimatedImageFile(path))
                         {
                             info.Kind = PreviewKind.Video;
                             info.IsAnimatedWebp = true;
@@ -628,6 +627,30 @@ public class PreviewContentProvider
             i += extra + 1;
         }
         return true;
+    }
+
+    // ── アニメーション画像判定（WebP / GIF / APNG） ─────────
+    /// <summary>
+    /// 拡張子に応じてアニメーション画像かどうかを判定する。
+    /// WebPはRIFFチャンクを直接スキャン（高速）、GIF/PNG(APNG)はWICデコーダの
+    /// フレーム数で判定する（複数フレーム = アニメーション）。
+    /// </summary>
+    private static bool IsAnimatedImageFile(string path)
+    {
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+        try
+        {
+            if (ext == ".webp") return IsAnimatedWebpFile(path);
+            if (ext == ".gif" || ext == ".png")
+            {
+                using var fs = File.OpenRead(path);
+                var decoder = BitmapDecoder.Create(fs,
+                    BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+                return decoder.Frames.Count > 1;
+            }
+        }
+        catch { }
+        return false;
     }
 
     // ── アニメーションWebP判定 ────────────────────────────

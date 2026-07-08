@@ -744,6 +744,26 @@ public class SettingsWindow : Window
         panel.Children.Add(animFpsEnableRow);
         panel.Children.Add(animFpsRow);
 
+        // 透過画像・アニメーションの背景
+        var transparencyBgRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 4) };
+        transparencyBgRow.Children.Add(new TextBlock
+        {
+            Text = "透過画像/アニメーションの背景:",
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        });
+        var transparencyBgBox = new ComboBox { Width = 160 };
+        transparencyBgBox.Items.Add("プレビューと同じ色（既定）");
+        transparencyBgBox.Items.Add("市松模様（透明グリッド）");
+        transparencyBgBox.SelectedIndex = p.TransparencyBackground == "checkerboard" ? 1 : 0;
+        transparencyBgBox.SelectionChanged += (_, _) =>
+        {
+            p.TransparencyBackground = transparencyBgBox.SelectedIndex == 1 ? "checkerboard" : "tooltip";
+            _save();
+        };
+        transparencyBgRow.Children.Add(transparencyBgBox);
+        panel.Children.Add(transparencyBgRow);
+
         // デスクトップアイコンのプレビュー
         var desktopIcons = new CheckBox
         {

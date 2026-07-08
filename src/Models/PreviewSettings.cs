@@ -184,6 +184,13 @@ public class PreviewSettings
     /// </summary>
     public bool AnimatedWebpFpsOverrideEnabled { get; set; } = false;
 
+    /// <summary>
+    /// 透過画像・アニメーション（WebP/GIF/APNG等）の透明部分に表示する背景。
+    /// "tooltip": プレビューツールチップと同じ背景色（デフォルト）
+    /// "checkerboard": 市松模様（透明グリッド）
+    /// </summary>
+    public string TransparencyBackground { get; set; } = "tooltip";
+
     // ── 再生位置の記憶用ストア（パス→秒） ─────────────────
     public Dictionary<string, double> PlaybackPositions { get; set; } = [];
 }
